@@ -164,7 +164,7 @@ func (c *Client) convertTrackToSong(track spotify.FullTrack) Song {
 		Name:          track.Name,
 		Artist:        artist,
 		Album:         track.Album.Name,
-		Duration:      track.Duration,
+		Duration:      int(track.Duration),
 		URI:           string(track.URI),
 		ISRC:          track.ExternalIDs["isrc"],
 		MusicBrainzID: "", // Will be populated later if needed
