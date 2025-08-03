@@ -22,7 +22,7 @@ Can be run manually as a CLI or scheduled as a cron task.
 
 ### 1. Download Pre-built Binary
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/garry/plexify/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/grrywlsn/plexify/releases):
 
 ```bash
 # Linux (amd64)
