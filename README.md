@@ -233,7 +233,61 @@ The MusicBrainz ID can be used to:
 - Use with other music services that support MusicBrainz IDs
 
 **API Rate Limiting:** MusicBrainz has rate limiting in place. Plexify respects these limits and will make requests at a reasonable pace to avoid being blocked.
+
+## Configuration
+
+Plexify supports multiple ways to configure settings, with the following hierarchy (highest priority first):
+
+1. **CLI Flags** - Override everything else
+2. **Environment Variables** - Loaded from `.env` file or system environment
+3. **System Environment Variables** - Fallback if `.env` file doesn't exist
+
+### CLI Flags
+
+All environment variables can be set via CLI flags using the same names:
+
+```bash
+# Spotify configuration
+./plexify -SPOTIFY_CLIENT_ID=your_client_id -SPOTIFY_CLIENT_SECRET=your_secret
+./plexify -SPOTIFY_USERNAME=your_username
+./plexify -SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
+
+# Plex configuration
+./plexify -PLEX_URL=http://your-server:32400 -PLEX_TOKEN=your_token
+./plexify -PLEX_LIBRARY_SECTION_ID=6
+./plexify -PLEX_SERVER_ID=your_server_id
+
+# Legacy flags (still supported)
+./plexify -username your_username -playlists playlist_id1,playlist_id2
 ```
+
+### Environment Variables
+
+Create a `.env` file in the same directory as the binary:
+
+```env
+# Spotify API credentials
+SPOTIFY_CLIENT_ID=your_client_id
+SPOTIFY_CLIENT_SECRET=your_client_secret
+SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
+SPOTIFY_USERNAME=your_spotify_username
+SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
+
+# Plex Configuration
+PLEX_URL=http://your_plex_server:32400
+PLEX_TOKEN=your_plex_token_here
+PLEX_LIBRARY_SECTION_ID=your_music_library_section_id
+PLEX_SERVER_ID=your_server_id
+```
+
+### Configuration Priority Example
+
+If you have:
+- `SPOTIFY_USERNAME=user1` in your `.env` file
+- `SPOTIFY_USERNAME=user2` as a system environment variable
+- `./plexify -SPOTIFY_USERNAME=user3`
+
+The final value will be `user3` (CLI flag takes precedence).
 
 ## Development
 
@@ -341,125 +395,3 @@ Plexify uses a sophisticated multi-step matching system to find songs from Spoti
 - `"Song Title featuring Artist"` → `"Song Title"`
 - `"Song Title feat. Artist"` → `"Song Title"`
 - `"Song Title ft. Artist"` → `"Song Title"`
-- Uses the last occurrence of featuring text (most common pattern)
-
-#### 5. **Title Normalization** (Fifth Priority)
-**When it applies:** Songs with dashes in the title
-**What it does:** Converts dashes to parentheses format
-**Rules:**
-- `"Song Title - Remix"` → `"Song Title (Remix)"`
-- `"Song Title - Version - Edit"` → `"Song Title (Version) (Edit)"`
-- Handles multiple dashes by wrapping each part in parentheses
-
-#### 6. **With Removal** (Sixth Priority)
-**When it applies:** Songs with "with" in the title
-**What it does:** Removes "with" and following text, also cleans up trailing dashes
-**Rules:**
-- `"Song Title with Artist"` → `"Song Title"`
-- `"Song Title - with Artist"` → `"Song Title"`
-- `"with Artist - Song Title"` → `"Song Title"`
-- Only removes "with" as a whole word (not "without", "within", etc.)
-- Automatically removes trailing dashes and spaces after "with" removal
-
-#### 7. **Common Suffix Removal** (Seventh Priority)
-**When it applies:** Songs with common suffixes like "bonus track", "remix", "extended", etc.
-**What it does:** Removes common suffixes to match the base song title
-**Rules:**
-- `"Song Title - bonus track"` → `"Song Title"`
-- `"Song Title - Remix"` → `"Song Title"`
-- `"Song Title - Extended"` → `"Song Title"`
-- `"Song Title - Radio Edit"` → `"Song Title"`
-- `"Song Title - Live"` → `"Song Title"`
-- `"Song Title - Acoustic"` → `"Song Title"`
-- `"Song Title (Bonus Track)"` → `"Song Title"`
-- `"Song Title (Remix)"` → `"Song Title"`
-- Handles both dash and parentheses formats
-- Automatically removes trailing dashes and spaces after suffix removal
-
-#### 8. **Full Library Search** (Last Resort)
-**When it applies:** When all other methods fail
-**What it does:** Searches through every track in your Plex library
-**Rules:**
-- Most expensive operation (slowest)
-- Used only when other methods can't find tracks that should exist
-- Still applies the same matching logic to find the best match
-
-### How Matches Are Scored
-
-For each search result, Plexify calculates a confidence score using multiple similarity checks:
-
-#### Title Similarity (70% weight)
-The system tries **six different title variations** and uses the best score:
-1. **Original title** comparison
-2. **Bracket-removed** title comparison  
-3. **Featuring-removed** title comparison
-4. **Normalized** title comparison (dashes → parentheses)
-5. **With-removed** title comparison
-6. **Suffix-removed** title comparison (bonus track, remix, etc.)
-
-#### Artist Similarity (30% weight)
-Direct comparison of artist names
-
-#### Similarity Calculation
-- **Exact match:** 100% confidence
-- **Substring match:** Percentage of the longer string covered
-- **Word-level match:** Percentage of matching words
-- **Length similarity:** How close the string lengths are
-
-#### Confidence Threshold
-- **Minimum score:** 60% confidence required for a match
-- **Perfect match:** Returns immediately (100% confidence)
-- **Artist similarity check:** When title similarity is very high (>90%), artist similarity must also be reasonable (≥30%) to prevent incorrect matches
-
-### Example Matching Process
-
-For a Spotify song: `"Don't Stop Believin' (feat. Journey)"`
-
-1. **Exact Match:** Searches for `"Don't Stop Believin' (feat. Journey)"` with exact title/artist
-2. **Single Quote Handling:** Tries `"Dont Stop Believin"`, `"Don`t Stop Believin``"`, etc.
-3. **Bracket Removal:** Searches for `"Don't Stop Believin'"`
-4. **Featuring Removal:** Searches for `"Don't Stop Believin'"`
-5. **Title Normalization:** No dashes to normalize
-6. **With Removal:** No "with" to remove
-7. **Suffix Removal:** No common suffixes to remove
-8. **Full Library Search:** Searches entire library if needed
-
-For a Spotify song: `"the lakes - bonus track"`
-
-1. **Exact Match:** Searches for `"the lakes - bonus track"`
-2. **Single Quote Handling:** No quotes to handle
-3. **Bracket Removal:** No brackets to remove
-4. **Featuring Removal:** No featuring to remove
-5. **Title Normalization:** Converts to `"the lakes (bonus track)"`
-6. **With Removal:** No "with" to remove
-7. **Suffix Removal:** Removes "bonus track" → searches for `"the lakes"`
-8. **Full Library Search:** Searches entire library if needed
-
-### Test Cases
-
-The matching logic includes comprehensive test cases to ensure reliability. For example, the system correctly handles:
-
-- **"Neon Moon - with Kacey Musgraves" by Brooks & Dunn** → matches **"Neon Moon" by Brooks & Dunn**
-- **"the lakes - bonus track" by Taylor Swift** → matches **"the lakes" by Taylor Swift**
-- **"Don't Stop Believin'" by Journey** → handles apostrophes and contractions
-- **"Song Title (feat. Artist)"** → matches **"Song Title"** after bracket removal
-- **"Song Title - Remix"** → matches **"Song Title (Remix)"** after normalization
-- **"Song Title - Extended"** → matches **"Song Title"** after suffix removal
-
-**Important:** The system includes safeguards to prevent incorrect matches. For example:
-- **"The Lakes" by "Some Other Artist"** → **NO match** (correctly rejected due to artist mismatch)
-- **"The Lakes" by "Taylor Swift"** → **matches** (correctly accepted due to both title and artist similarity)
-
-These test cases help ensure the matching logic works correctly for real-world scenarios and can catch regressions when making improvements.
-
-### Improving Match Success
-
-To improve matching success rates:
-
-1. **Ensure consistent naming** in your Plex library
-2. **Use standard artist names** (avoid "feat.", "ft.", etc. in artist fields)
-3. **Clean up track titles** by removing unnecessary brackets or featuring text
-4. **Check for encoding issues** with special characters
-5. **Verify your music library** has the songs you're trying to match
-
-The matching system is designed to be flexible and handle common variations, but the quality of your Plex library metadata directly affects match success rates.
