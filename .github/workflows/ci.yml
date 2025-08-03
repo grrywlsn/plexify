@@ -252,7 +252,7 @@ jobs:
             See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions.
           files: |
             dist/plexify-*
-          draft: true
+          draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -297,7 +297,7 @@ jobs:
             See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions.
           files: |
             dist/plexify-*
-          draft: true
+          draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -342,7 +342,7 @@ jobs:
             See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions.
           files: |
             dist/plexify-*
-          draft: true
+          draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
