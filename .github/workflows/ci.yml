@@ -3,6 +3,7 @@ name: CI/CD Pipeline
 on:
   pull_request:
     branches: [ main ]
+    types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
 env:
@@ -23,7 +24,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -53,7 +54,7 @@ jobs:
     name: Build and Release
     needs: test
     runs-on: ${{ matrix.os }}
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
         include:
@@ -94,7 +95,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Cache Go modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -109,16 +110,8 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION=$(git describe --tags --always --dirty)
           else
-            # Get version from PR labels
-            if [[ "${{ contains(github.event.pull_request.labels.*.name, 'major') }}" == "true" ]]; then
-              VERSION="${{ steps.semvers.outputs.v_major }}"
-            elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'minor') }}" == "true" ]]; then
-              VERSION="${{ steps.semvers.outputs.v_minor }}"
-            elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'patch') }}" == "true" ]]; then
-              VERSION="${{ steps.semvers.outputs.v_patch }}"
-            else
-              VERSION=$(git describe --tags --always --dirty)
-            fi
+            # For merged PRs, use git describe for now, version will be set in release job
+            VERSION=$(git describe --tags --always --dirty)
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
@@ -175,7 +168,7 @@ jobs:
     name: Create Release
     needs: build-and-release
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && (contains(github.event.pull_request.labels.*.name, 'patch') || contains(github.event.pull_request.labels.*.name, 'minor') || contains(github.event.pull_request.labels.*.name, 'major'))
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && (contains(github.event.pull_request.labels.*.name, 'patch') || contains(github.event.pull_request.labels.*.name, 'minor') || contains(github.event.pull_request.labels.*.name, 'major'))
     
     steps:
       - name: Checkout code
