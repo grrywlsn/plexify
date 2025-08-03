@@ -15,7 +15,7 @@ A tool to sync Spotify playlists to playlists on your Plex server.
 ## Prerequisites
 
 - Spotify API credentials
-- Plex Media Server with music library
+- Plex Media Server with music library, and the `X-Plex-Token` token
 
 ## Quick Start
 
