@@ -2,61 +2,17 @@
 
 A tool to sync Spotify playlists to Plex music libraries.
 
-## Korean Track Matching Bug Investigation
-
-### Problem Description
-A bug was reported where a Korean track "Like this" by "박혜진 Park Hye Jin" was being incorrectly matched with high confidence to multiple unrelated songs, particularly Taylor Swift's "the lakes - bonus track".
-
-### Investigation Results
-Comprehensive tests were written to investigate this bug. The findings show that:
-
-1. **Current code works correctly** - The confidence calculation between "the lakes - bonus track" by "Taylor Swift" and "Like this" by "박혜진 Park Hye Jin" is 0.259, which is below the 0.6 threshold, so no match is returned.
-
-2. **Most likely cause** - The Korean track in the actual Plex library likely has different metadata than "Like this". Specifically, if the track has a title similar to "the lakes", such as:
-   - "The Lake" (confidence: 0.671 - would match!)
-   - "The Lakes" (confidence: 0.749 - would match but rejected due to artist similarity check)
-   - "THE LAKES" (confidence: 0.749 - would match but rejected due to artist similarity check)
-
-3. **The bug occurs when** - The Korean track has a title that's very similar to "the lakes" and the confidence score exceeds the 0.6 threshold.
-
-### Test Files Created
-The following test files were created to investigate this bug:
-
-- `TestKoreanTrackConfidenceCalculationBug` - Tests confidence calculation
-- `TestKoreanTrackFullSearchFlowBug` - Tests the full search flow
-- `TestKoreanTrackSearchMethodsBug` - Tests individual search methods
-- `TestKoreanTrackBugInvestigation` - Comprehensive investigation
-- `TestKoreanTrackBugSummary` - Summary of findings
-- `TestKoreanTrackMostLikelyBugCause` - Tests different metadata variations
-
-### Recommendations
-1. Check the actual metadata of the Korean track in the Plex library
-2. If it has a similar title to "the lakes", consider adding additional checks
-3. Consider adding artist similarity requirements for high-confidence matches
-4. Consider adding a minimum artist similarity threshold
-
-### Running the Tests
-```bash
-# Run all Korean track bug tests
-go test -v ./plex -run TestKoreanTrack
-
-# Run specific test
-go test -v ./plex -run TestKoreanTrackMostLikelyBugCause
-```
-
 ## Features
 
 - 🔍 Fetch songs from Spotify playlists
+- 📋 Can take either a list of playlist IDs or find all public playlists by username
 - 🎵 Extract track metadata (title, artist, album, duration, ISRC)
-- 🎯 Match songs to Plex library using ISRC and title/artist matching
+- 🎯 Match songs to Plex library using title/artist matching
 - 📝 Create Plex playlists dynamically with matched songs
-- 🔧 Environment-based configuration
-- 🚀 CLI-friendly for cronjob automation
-- 📦 Well-structured Go code following best practices
+- 🧠 Retrieve the MusicBrainz id for missing songs to make it easier to find them
 
 ## Prerequisites
 
-- Go 1.21 or higher
 - Spotify API credentials
 - Plex Media Server with music library
 
@@ -81,20 +37,6 @@ chmod +x plexify-darwin-arm64
 
 # Windows
 # Download plexify-windows-amd64.exe from the releases page
-```
-
-### Build from Source
-
-If you prefer to build from source:
-
-## Setup
-
-### 1. Clone and Setup
-
-```bash
-git clone <your-repo-url>
-cd plexify
-make setup
 ```
 
 ### 2. Spotify API Setup
@@ -141,7 +83,7 @@ SPOTIFY_CLIENT_ID=your_spotify_client_id_here
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
 SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
 
-# Plex Configuration (for future use)
+# Plex Configuration
 PLEX_URL=http://your_plex_server:32400
 PLEX_TOKEN=your_plex_token_here
 PLEX_LIBRARY_SECTION_ID=your_music_library_section_id
@@ -153,22 +95,6 @@ SPOTIFY_USERNAME=your_spotify_username_here
 # Option 2: Comma-separated list of specific Spotify playlist IDs
 SPOTIFY_PLAYLIST_ID=playlist_id_1,playlist_id_2,playlist_id_3
 
-# Application Configuration
-LOG_LEVEL=info
-```
-
-### 5. Build and Test
-
-```bash
-# Build for current platform
-make build
-
-# Run tests
-make test
-
-# Check version
-./bin/plexify -version
-```
 
 ### 6. Configure Playlists (Optional)
 
