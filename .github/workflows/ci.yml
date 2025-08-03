@@ -50,9 +50,57 @@ jobs:
             exit 1
           fi
 
+  get-version:
+    name: Get Version
+    needs: test
+    runs-on: ubuntu-latest
+    if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      v_patch: ${{ steps.semvers.outputs.v_patch }}
+      v_minor: ${{ steps.semvers.outputs.v_minor }}
+      v_major: ${{ steps.semvers.outputs.v_major }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get Previous tag
+        id: previoustag
+        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+        with:
+          fallback: 0.0.0
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Get next version
+        id: semvers
+        uses: "WyriHaximus/github-action-next-semvers@v1"
+        with:
+          version: ${{ steps.previoustag.outputs.tag }}
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION=$(git describe --tags --always --dirty)
+          else
+            # Get version from PR labels
+            if [[ "${{ contains(github.event.pull_request.labels.*.name, 'major') }}" == "true" ]]; then
+              VERSION="${{ steps.semvers.outputs.v_major }}"
+            elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'minor') }}" == "true" ]]; then
+              VERSION="${{ steps.semvers.outputs.v_minor }}"
+            elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'patch') }}" == "true" ]]; then
+              VERSION="${{ steps.semvers.outputs.v_patch }}"
+            else
+              VERSION=$(git describe --tags --always --dirty)
+            fi
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
   build-and-release:
     name: Build and Release
-    needs: test
+    needs: [test, get-version]
     runs-on: ${{ matrix.os }}
     if: (github.event_name == 'pull_request' && github.event.pull_request.merged == true) || github.event_name == 'workflow_dispatch'
     strategy:
@@ -104,34 +152,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Get version
-        id: version
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION=$(git describe --tags --always --dirty)
-          else
-            # For merged PRs, use git describe for now, version will be set in release job
-            VERSION=$(git describe --tags --always --dirty)
-          fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
-      - name: Get Previous tag
-        id: previoustag
-        if: github.event.pull_request.merged == true
-        uses: "WyriHaximus/github-action-get-previous-tag@v1"
-        with:
-          fallback: 0.0.0
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Get next version
-        id: semvers
-        if: github.event.pull_request.merged == true
-        uses: "WyriHaximus/github-action-next-semvers@v1"
-        with:
-          version: ${{ steps.previoustag.outputs.tag }}
-
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
@@ -139,7 +159,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           go build \
-            -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -ldflags="-s -w -X main.version=${{ needs.get-version.outputs.version }}" \
             -o ${{ env.BINARY_NAME }} \
             main.go
 
@@ -166,27 +186,13 @@ jobs:
 
   release:
     name: Create Release
-    needs: build-and-release
+    needs: [build-and-release, get-version]
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true && (contains(github.event.pull_request.labels.*.name, 'patch') || contains(github.event.pull_request.labels.*.name, 'minor') || contains(github.event.pull_request.labels.*.name, 'major'))
+    if: github.event.pull_request.merged == true && (contains(github.event.pull_request.labels.*.name, 'patch') || contains(github.event.pull_request.labels.*.name, 'minor') || contains(github.event.pull_request.labels.*.name, 'major'))
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Get Previous tag
-        id: previoustag
-        uses: "WyriHaximus/github-action-get-previous-tag@v1"
-        with:
-          fallback: 0.0.0
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Get next version
-        id: semvers
-        uses: "WyriHaximus/github-action-next-semvers@v1"
-        with:
-          version: ${{ steps.previoustag.outputs.tag }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -196,24 +202,24 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.semvers.outputs.v_patch }}
-          name: Release ${{ steps.semvers.outputs.v_patch }}
+          tag_name: ${{ needs.get-version.outputs.v_patch }}
+          name: Release ${{ needs.get-version.outputs.v_patch }}
           body: |
-            ## Plexify ${{ steps.semvers.outputs.v_patch }}
+            ## Plexify ${{ needs.get-version.outputs.v_patch }}
             
             ### Downloads
             
             **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_patch }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_patch }}/plexify-linux-arm64)
+            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-linux-amd64)
+            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-linux-arm64)
             
             **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_patch }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_patch }}/plexify-darwin-arm64)
+            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-darwin-amd64)
+            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-darwin-arm64)
             
             **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_patch }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_patch }}/plexify-windows-arm64.exe)
+            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-windows-amd64.exe)
+            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-windows-arm64.exe)
             
             ### Installation
             
@@ -241,24 +247,24 @@ jobs:
       - name: Create minor release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.semvers.outputs.v_minor }}
-          name: Release ${{ steps.semvers.outputs.v_minor }}
+          tag_name: ${{ needs.get-version.outputs.v_minor }}
+          name: Release ${{ needs.get-version.outputs.v_minor }}
           body: |
-            ## Plexify ${{ steps.semvers.outputs.v_minor }}
+            ## Plexify ${{ needs.get-version.outputs.v_minor }}
             
             ### Downloads
             
             **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_minor }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_minor }}/plexify-linux-arm64)
+            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-linux-amd64)
+            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-linux-arm64)
             
             **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_minor }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_minor }}/plexify-darwin-arm64)
+            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-darwin-amd64)
+            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-darwin-arm64)
             
             **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_minor }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_minor }}/plexify-windows-arm64.exe)
+            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-windows-amd64.exe)
+            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-windows-arm64.exe)
             
             ### Installation
             
@@ -286,24 +292,24 @@ jobs:
       - name: Create major release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.semvers.outputs.v_major }}
-          name: Release ${{ steps.semvers.outputs.v_major }}
+          tag_name: ${{ needs.get-version.outputs.v_major }}
+          name: Release ${{ needs.get-version.outputs.v_major }}
           body: |
-            ## Plexify ${{ steps.semvers.outputs.v_major }}
+            ## Plexify ${{ needs.get-version.outputs.v_major }}
             
             ### Downloads
             
             **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-linux-arm64)
+            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-linux-amd64)
+            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-linux-arm64)
             
             **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-darwin-arm64)
+            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-darwin-amd64)
+            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-darwin-arm64)
             
             **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-windows-arm64.exe)
+            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-windows-amd64.exe)
+            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-windows-arm64.exe)
             
             ### Installation
             
