@@ -292,24 +292,24 @@ jobs:
       - name: Create major release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.semvers.outputs.v_major }}
-          name: Release ${{ steps.semvers.outputs.v_major }}
+          tag_name: ${{ needs.get-version.outputs.v_major }}
+          name: Release ${{ needs.get-version.outputs.v_major }}
           body: |
-            ## Plexify ${{ steps.semvers.outputs.v_major }}
+            ## Plexify ${{ needs.get-version.outputs.v_major }}
             
             ### Downloads
             
             **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-linux-arm64)
+            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-linux-amd64)
+            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-linux-arm64)
             
             **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-darwin-arm64)
+            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-darwin-amd64)
+            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-darwin-arm64)
             
             **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.semvers.outputs.v_major }}/plexify-windows-arm64.exe)
+            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-windows-amd64.exe)
+            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-windows-arm64.exe)
             
             ### Installation
             
