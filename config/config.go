@@ -69,6 +69,25 @@ func Load() (*Config, error) {
 	return config, nil
 }
 
+// LoadWithOverrides loads configuration and applies CLI flag overrides
+func LoadWithOverrides(overrides map[string]string) (*Config, error) {
+	// Load base configuration
+	config, err := Load()
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply CLI flag overrides
+	config.applyOverrides(overrides)
+
+	// Re-validate after overrides
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
+
 // loadEnvFile loads environment variables from .env file
 func loadEnvFile() error {
 	return godotenv.Load()
@@ -155,14 +174,25 @@ func parseLibrarySectionID(value string) (int, error) {
 
 // validate checks that all required configuration values are present
 func (c *Config) validate() error {
+	var errors []string
+
 	// Validate Spotify configuration
 	if err := c.validateSpotifyConfig(); err != nil {
-		return fmt.Errorf("Spotify config validation failed: %w", err)
+		errors = append(errors, err.Error())
 	}
 
 	// Validate Plex configuration
 	if err := c.validatePlexConfig(); err != nil {
-		return fmt.Errorf("Plex config validation failed: %w", err)
+		errors = append(errors, err.Error())
+	}
+
+	// Validate playlist configuration
+	if err := c.validatePlaylistConfig(); err != nil {
+		errors = append(errors, err.Error())
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("configuration validation failed:\n%s", strings.Join(errors, "\n"))
 	}
 
 	return nil
@@ -170,29 +200,48 @@ func (c *Config) validate() error {
 
 // validateSpotifyConfig validates Spotify configuration
 func (c *Config) validateSpotifyConfig() error {
+	var errors []string
+
 	if c.Spotify.ClientID == "" {
-		return fmt.Errorf("SPOTIFY_CLIENT_ID is required")
+		errors = append(errors, "SPOTIFY_CLIENT_ID is required (set via environment variable, .env file, or -SPOTIFY_CLIENT_ID flag)")
 	}
 	if c.Spotify.ClientSecret == "" {
-		return fmt.Errorf("SPOTIFY_CLIENT_SECRET is required")
+		errors = append(errors, "SPOTIFY_CLIENT_SECRET is required (set via environment variable, .env file, or -SPOTIFY_CLIENT_SECRET flag)")
 	}
 
-	// Note: SPOTIFY_PLAYLIST_ID is optional - users can use SPOTIFY_USERNAME instead
-	// or provide playlist IDs via command line arguments
+	if len(errors) > 0 {
+		return fmt.Errorf("Spotify configuration errors:\n%s", strings.Join(errors, "\n"))
+	}
 
 	return nil
 }
 
 // validatePlexConfig validates Plex configuration
 func (c *Config) validatePlexConfig() error {
+	var errors []string
+
 	if c.Plex.URL == "" {
-		return fmt.Errorf("PLEX_URL is required")
+		errors = append(errors, "PLEX_URL is required (set via environment variable, .env file, or -PLEX_URL flag)")
 	}
 	if c.Plex.Token == "" {
-		return fmt.Errorf("PLEX_TOKEN is required")
+		errors = append(errors, "PLEX_TOKEN is required (set via environment variable, .env file, or -PLEX_TOKEN flag)")
 	}
 	if c.Plex.LibrarySectionID == 0 {
-		return fmt.Errorf("PLEX_LIBRARY_SECTION_ID is required")
+		errors = append(errors, "PLEX_LIBRARY_SECTION_ID is required (set via environment variable, .env file, or -PLEX_LIBRARY_SECTION_ID flag)")
+	}
+
+	if len(errors) > 0 {
+		return fmt.Errorf("Plex configuration errors:\n%s", strings.Join(errors, "\n"))
+	}
+
+	return nil
+}
+
+// validatePlaylistConfig validates that at least one playlist source is configured
+func (c *Config) validatePlaylistConfig() error {
+	// At least one of SPOTIFY_USERNAME or SPOTIFY_PLAYLIST_ID must be provided
+	if c.Spotify.Username == "" && len(c.Spotify.PlaylistIDs) == 0 {
+		return fmt.Errorf("playlist configuration error:\nEither SPOTIFY_USERNAME or SPOTIFY_PLAYLIST_ID must be provided (set via environment variable, .env file, or CLI flags)")
 	}
 
 	return nil
@@ -204,4 +253,32 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// applyOverrides applies CLI flag overrides to the configuration
+func (c *Config) applyOverrides(overrides map[string]string) {
+	for key, value := range overrides {
+		switch key {
+		case "SPOTIFY_CLIENT_ID":
+			c.Spotify.ClientID = value
+		case "SPOTIFY_CLIENT_SECRET":
+			c.Spotify.ClientSecret = value
+		case "SPOTIFY_REDIRECT_URI":
+			c.Spotify.RedirectURI = value
+		case "SPOTIFY_USERNAME":
+			c.Spotify.Username = value
+		case "SPOTIFY_PLAYLIST_ID":
+			c.Spotify.PlaylistIDs = parseCommaSeparatedList(value)
+		case "PLEX_URL":
+			c.Plex.URL = value
+		case "PLEX_TOKEN":
+			c.Plex.Token = value
+		case "PLEX_LIBRARY_SECTION_ID":
+			if sectionID, err := parseLibrarySectionID(value); err == nil {
+				c.Plex.LibrarySectionID = sectionID
+			}
+		case "PLEX_SERVER_ID":
+			c.Plex.ServerID = value
+		}
+	}
 }
