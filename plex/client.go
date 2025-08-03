@@ -260,7 +260,7 @@ func (c *Client) SearchTrack(ctx context.Context, song spotify.Song) (*PlexTrack
 			return nil, nil
 		}},
 		{"suffixes removed", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
-			suffixTitle := c.removeCommonSuffixes(title)
+			suffixTitle := c.RemoveCommonSuffixes(title)
 			if suffixTitle != title && suffixTitle != c.removeBrackets(title) && suffixTitle != c.removeFeaturing(title) && suffixTitle != c.normalizeTitle(title) && suffixTitle != c.removeWith(title) {
 				c.debugLog("🔍 SearchTrack: trying suffix-removed title '%s' for '%s' by '%s'", suffixTitle, title, artist)
 				return c.trySearchVariations(ctx, suffixTitle, artist)
@@ -622,8 +622,8 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		c.debugLog("   'With'-removed title similarity: %.3f ('%s' vs '%s')", withTitleSimilarity, withTitleLower, withTrackTitleLower)
 
 		// Also try with common suffixes removed for better matching
-		suffixTitleLower := strings.ToLower(strings.TrimSpace(c.removeCommonSuffixes(title)))
-		suffixTrackTitleLower := strings.ToLower(strings.TrimSpace(c.removeCommonSuffixes(track.Title)))
+		suffixTitleLower := strings.ToLower(strings.TrimSpace(c.RemoveCommonSuffixes(title)))
+		suffixTrackTitleLower := strings.ToLower(strings.TrimSpace(c.RemoveCommonSuffixes(track.Title)))
 
 		// Calculate similarity with common suffixes removed
 		suffixTitleSimilarity := c.calculateStringSimilarity(suffixTitleLower, suffixTrackTitleLower)
@@ -1264,8 +1264,8 @@ func (c *Client) calculateConfidence(song spotify.Song, track *PlexTrack, matchT
 
 		// Also try with common suffixes removed for better matching
 		suffixTitleSimilarity := c.calculateStringSimilarity(
-			strings.ToLower(c.removeCommonSuffixes(song.Name)),
-			strings.ToLower(c.removeCommonSuffixes(track.Title)),
+			strings.ToLower(c.RemoveCommonSuffixes(song.Name)),
+			strings.ToLower(c.RemoveCommonSuffixes(track.Title)),
 		)
 
 		// Use the best of the six title similarities
@@ -1424,8 +1424,8 @@ func (c *Client) removeWith(s string) string {
 	return s
 }
 
-// removeCommonSuffixes removes common suffixes like "bonus track", "remix", "extended", etc. from track titles.
-func (c *Client) removeCommonSuffixes(s string) string {
+// RemoveCommonSuffixes removes common suffixes like "bonus track", "remix", "extended", etc. from track titles.
+func (c *Client) RemoveCommonSuffixes(s string) string {
 	// Handle common suffixes (case insensitive)
 	lowerS := strings.ToLower(s)
 
@@ -1448,6 +1448,14 @@ func (c *Client) removeCommonSuffixes(s string) string {
 		" - explicit",
 		" - bonus",
 		" - track",
+		// Soundtrack suffixes
+		" - from the motion picture",
+		" - from the film",
+		" - from the movie",
+		" - from the soundtrack",
+		" - soundtrack version",
+		" - film version",
+		" - movie version",
 		" (bonus track)",
 		" (remix)",
 		" (extended)",
@@ -1465,6 +1473,11 @@ func (c *Client) removeCommonSuffixes(s string) string {
 		" (explicit)",
 		" (bonus)",
 		" (track)",
+		// Soundtrack suffixes in parentheses (handled separately below)
+		" (from the soundtrack)",
+		" (soundtrack version)",
+		" (film version)",
+		" (movie version)",
 	}
 
 	for _, suffix := range suffixes {
@@ -1474,6 +1487,32 @@ func (c *Client) removeCommonSuffixes(s string) string {
 			// Clean up trailing dashes and spaces
 			result = strings.TrimSpace(strings.TrimSuffix(result, "-"))
 			return result
+		}
+	}
+
+	// Handle special cases with quotes that need regex matching
+	// These patterns can have varying content inside quotes
+	soundtrackPatterns := []string{
+		" - from the motion picture",
+		" - from the film",
+		" - from the movie",
+		"(from the motion picture",
+		"(from the film",
+		"(from the movie",
+	}
+
+	for _, pattern := range soundtrackPatterns {
+		lowerPattern := strings.ToLower(pattern)
+		if strings.Contains(lowerS, lowerPattern) {
+			// Find the position of the pattern
+			patternIndex := strings.Index(lowerS, lowerPattern)
+			if patternIndex > 0 {
+				// Return the original string up to the pattern (preserving original case)
+				result := strings.TrimSpace(s[:patternIndex])
+				// Clean up trailing dashes and spaces
+				result = strings.TrimSpace(strings.TrimSuffix(result, "-"))
+				return result
+			}
 		}
 	}
 
