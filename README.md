@@ -9,7 +9,7 @@ Can be run manually as a CLI, or scheduled as a cron task.
 - 🔍 Fetch songs from Spotify playlists
 - 📋 Can take either a [list of Spotify playlists, or find all public playlists by username](#5-finding-playlists)
 - 🎵 Extract track metadata (title, artist, album, duration, ISRC)
-- 🎯 Match Spotify songs to Plex library using title/artist [using pre-defined rules](#matching-functions)
+- 🎯 Match Spotify songs to Plex library using title/artist [using pre-defined rules](#matching-rules)
 - 📝 Create Plex playlists dynamically with matched songs, or update existing playlists
 - 🧠 [Retrieve the MusicBrainz id](#musicbrainz-integration) for missing songs to make it easier to find them
 
@@ -193,7 +193,7 @@ Tracks not found in Plex library (5 total):
 
 ## MusicBrainz Integration
 
-Plexify includes integration with the MusicBrainz database to provide additional track identification information. When tracks are not found in your Plex library, Plexify will automatically:
+Plexify includes integration with the MusicBrainz database to provide additional track identification information. When tracks are not found in your Plex library, plexify will automatically:
 
 1. **Search by ISRC** (if available): Uses the International Standard Recording Code to find the exact track in MusicBrainz
 2. **Search by Artist/Title** (fallback): If ISRC is not available or not found, searches by artist and title combination
@@ -264,9 +264,11 @@ If you have:
 
 The final value will be `user3` (CLI flag takes precedence).
 
-## Matching Functions
+## Matching Rules
 
-Plexify uses a sophisticated multi-step matching system to find songs from Spotify in your Plex library. The matching happens in a specific order, with each step trying different strategies to find the best match.
+The matching rules used by plexify will evolve and improve as it is used on more playlists and libraries.
+
+The matching happens in a specific order, with each step trying different strategies to find the best match.
 
 ### Matching Order and Rules
 
@@ -360,3 +362,13 @@ Plexify uses a sophisticated multi-step matching system to find songs from Spoti
 - Uses the most comprehensive search method
 - Applies similarity scoring to find the best match
 - Used as a last resort when other methods don't find matches
+
+## Matching issues
+
+If you run into issues where plexify will not match a song that you know is in your Plex library, [please raise an issue in this repo](https://github.com/grrywlsn/plexify/issues), and include:
+
+- the artist name and track name from Spotify
+- the artist name and track name from your Plex
+
+Please copy/paste them **exactly** as they appear in each source, so that the matching can be tested.
+
