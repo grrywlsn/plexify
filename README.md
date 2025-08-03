@@ -115,7 +115,7 @@ SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N,37i9dQZF1DXcBW
 
 Or you can provide a Spotify username and all public playlists will be found and synced:
 
-```
+```env
 SPOTIFY_USERNAME=your_spotify_username_here
 ```
 
