@@ -144,15 +144,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/.cache
-            ${{ github.workspace }}/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Install dependencies
+        run: go mod download
 
       - name: Verify build environment
         shell: bash
@@ -170,14 +163,22 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
         run: |
+          echo "Building for ${{ matrix.goos }}/${{ matrix.goarch }}"
+          echo "Version: ${{ needs.get-version.outputs.version }}"
+          echo "Binary name: ${{ env.BINARY_NAME }}"
+          
           go build \
             -ldflags="-s -w -X main.version=${{ needs.get-version.outputs.version }}" \
             -o ${{ env.BINARY_NAME }} \
             main.go
+          
+          echo "Build completed. Checking binary:"
+          ls -la ${{ env.BINARY_NAME }} || echo "Binary not found"
 
       - name: Create checksum
         shell: bash
         run: |
+          echo "Creating checksum for ${{ env.BINARY_NAME }}"
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             certutil -hashfile ${{ env.BINARY_NAME }} SHA256 > ${{ env.BINARY_NAME }}.sha256
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
@@ -185,11 +186,16 @@ jobs:
           else
             sha256sum ${{ env.BINARY_NAME }} > ${{ env.BINARY_NAME }}.sha256
           fi
+          echo "Checksum created:"
+          cat ${{ env.BINARY_NAME }}.sha256
 
       - name: Rename binary
         shell: bash
         run: |
+          echo "Renaming ${{ env.BINARY_NAME }} to ${{ matrix.artifact_name }}"
           mv ${{ env.BINARY_NAME }} ${{ matrix.artifact_name }}
+          echo "Files ready for upload:"
+          ls -la ${{ matrix.artifact_name }}*
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -212,30 +218,119 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      - name: Download Linux AMD64 artifacts
         uses: actions/download-artifact@v4
         with:
+          name: plexify-linux-amd64
           path: dist/
+        continue-on-error: true
+
+      - name: Download Linux ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plexify-linux-arm64
+          path: dist/
+        continue-on-error: true
+
+      - name: Download macOS AMD64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plexify-darwin-amd64
+          path: dist/
+        continue-on-error: true
+
+      - name: Download macOS ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plexify-darwin-arm64
+          path: dist/
+        continue-on-error: true
+
+      - name: Download Windows AMD64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plexify-windows-amd64.exe
+          path: dist/
+        continue-on-error: true
+
+      - name: Download Windows ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: plexify-windows-arm64.exe
+          path: dist/
+        continue-on-error: true
+
+      - name: List artifacts
+        run: |
+          echo "Contents of dist directory:"
+          ls -la dist/ || echo "dist directory is empty"
+          
+          # Check if we have any artifacts
+          if [ ! "$(ls -A dist/ 2>/dev/null)" ]; then
+            echo "Error: No artifacts found in dist directory"
+            exit 1
+          fi
+          
+          echo "Found artifacts:"
+          ls -la dist/
 
       - name: Generate release notes
         id: release_notes
         run: |
+          # Debug: Show git information
+          echo "Current commit: $(git rev-parse HEAD)"
+          echo "Current branch: $(git branch --show-current)"
+          echo "All tags:"
+          git tag --list | tail -10 || echo "No tags found"
+          
           # Get the previous tag to determine the range for changes
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          echo "Previous tag: $PREVIOUS_TAG"
           
           if [ -z "$PREVIOUS_TAG" ]; then
             # If no previous tag, get all commits since the beginning
             COMMIT_RANGE=""
+            echo "No previous tag found, will check all commits"
           else
             COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+            echo "Commit range: $COMMIT_RANGE"
           fi
           
+          # Debug: Show recent commits
+          echo "Recent commits:"
+          git log --oneline -10
+          
+          # Debug: Show merge commits
+          echo "Recent merge commits:"
+          git log --merges --oneline -10
+          
           # Get merged PRs since the last release
+          # Try different patterns for different merge strategies
           if [ -n "$COMMIT_RANGE" ]; then
+            # Try standard merge commits first
             MERGED_PRS=$(git log --merges --pretty=format:"%H %s" $COMMIT_RANGE | grep -E "Merge pull request #[0-9]+" || echo "")
+            
+            # If no merge commits found, try all commits (for squash and merge)
+            if [ -z "$MERGED_PRS" ]; then
+              echo "No merge commits found, checking all commits for PR references..."
+              MERGED_PRS=$(git log --pretty=format:"%H %s" $COMMIT_RANGE | grep -E "(Merge pull request #[0-9]+|\(#[0-9]+\)|#[0-9]+)" || echo "")
+            fi
           else
+            # Try standard merge commits first
             MERGED_PRS=$(git log --merges --pretty=format:"%H %s" | grep -E "Merge pull request #[0-9]+" || echo "")
+            
+            # If no merge commits found, try all commits (for squash and merge)
+            if [ -z "$MERGED_PRS" ]; then
+              echo "No merge commits found, checking all commits for PR references..."
+              MERGED_PRS=$(git log --pretty=format:"%H %s" | grep -E "(Merge pull request #[0-9]+|\(#[0-9]+\)|#[0-9]+)" || echo "")
+            fi
           fi
+          
+          echo "Found merged PRs:"
+          echo "$MERGED_PRS"
           
           # Determine which version to use based on PR labels
           if [[ "${{ contains(github.event.pull_request.labels.*.name, 'major') }}" == "true" ]]; then
@@ -258,9 +353,21 @@ jobs:
             
             # Process each merged PR
             while IFS= read -r line; do
-              if [[ $line =~ Merge\ pull\ request\ #([0-9]+) ]]; then
+              PR_NUMBER=""
+              COMMIT_HASH=$(echo "$line" | awk '{print $1}')
+              COMMIT_MSG=$(echo "$line" | sed 's/^[^ ]* //')
+              
+              # Try to extract PR number from different formats
+              if [[ $COMMIT_MSG =~ Merge\ pull\ request\ #([0-9]+) ]]; then
                 PR_NUMBER="${BASH_REMATCH[1]}"
-                COMMIT_HASH=$(echo "$line" | awk '{print $1}')
+              elif [[ $COMMIT_MSG =~ \(#([0-9]+)\) ]]; then
+                PR_NUMBER="${BASH_REMATCH[1]}"
+              elif [[ $COMMIT_MSG =~ \#([0-9]+) ]]; then
+                PR_NUMBER="${BASH_REMATCH[1]}"
+              fi
+              
+              if [ -n "$PR_NUMBER" ]; then
+                echo "Processing PR #$PR_NUMBER from commit $COMMIT_HASH"
                 
                 # Get PR details using GitHub API
                 PR_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -270,23 +377,46 @@ jobs:
                 PR_USER=$(echo "$PR_INFO" | jq -r '.user.login // "Unknown"')
                 PR_LABELS=$(echo "$PR_INFO" | jq -r '.labels[].name // empty' | tr '\n' ', ' | sed 's/,$//')
                 
-                # Get commit message for more context
-                COMMIT_MSG=$(git log --format=%B -n 1 $COMMIT_HASH | head -n 1)
-                
                 RELEASE_NOTES="$RELEASE_NOTES
                 
             **PR #$PR_NUMBER** by @$PR_USER
             - **Title:** $PR_TITLE
             - **Commit:** \`$COMMIT_HASH\`
             - **Labels:** $PR_LABELS"
+              else
+                echo "Could not extract PR number from: $COMMIT_MSG"
               fi
             done <<< "$MERGED_PRS"
           else
-            RELEASE_NOTES="$RELEASE_NOTES
+            # If no merged PRs found, try to get info from the current PR
+            CURRENT_PR_NUMBER="${{ github.event.pull_request.number }}"
+            if [ -n "$CURRENT_PR_NUMBER" ]; then
+              echo "No historical PRs found, using current PR #$CURRENT_PR_NUMBER"
+              
+              # Get current PR details
+              PR_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                "https://api.github.com/repos/${{ github.repository }}/pulls/$CURRENT_PR_NUMBER")
+              
+              PR_TITLE=$(echo "$PR_INFO" | jq -r '.title // "Unknown"')
+              PR_USER=$(echo "$PR_INFO" | jq -r '.user.login // "Unknown"')
+              PR_LABELS=$(echo "$PR_INFO" | jq -r '.labels[].name // empty' | tr '\n' ', ' | sed 's/,$//')
+              
+              RELEASE_NOTES="$RELEASE_NOTES
+            
+            ### Changes in this release
+            
+            This release includes the following changes:
+            
+            **PR #$CURRENT_PR_NUMBER** by @$PR_USER
+            - **Title:** $PR_TITLE
+            - **Labels:** $PR_LABELS"
+            else
+              RELEASE_NOTES="$RELEASE_NOTES
             
             ### Changes in this release
             
             This release includes direct commits and improvements."
+            fi
           fi
           
           # Add standard sections
