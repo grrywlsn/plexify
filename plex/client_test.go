@@ -1017,8 +1017,8 @@ func TestSearchFlowSimulation(t *testing.T) {
 			strings.ToLower(strings.TrimSpace(client.removeWith(plexTitle))),
 		)
 		suffixTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeCommonSuffixes(spotifyTitle))),
-			strings.ToLower(strings.TrimSpace(client.removeCommonSuffixes(plexTitle))),
+			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(plexTitle))),
 		)
 
 		t.Logf("Bracket-removed title similarity: %f", cleanTitleSimilarity)
@@ -1070,7 +1070,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 	})
 
 	t.Run("RemoveCommonSuffixes", func(t *testing.T) {
-		// Test the new removeCommonSuffixes function
+		// Test the new RemoveCommonSuffixes function
 		testCases := []struct {
 			input    string
 			expected string
@@ -1139,6 +1139,35 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    "Song Title - Track",
 				expected: "Song Title",
 			},
+			// Soundtrack suffix tests
+			{
+				input:    `Swan Song - From the Motion Picture "Alita: Battle Angel"`,
+				expected: "Swan Song",
+			},
+			{
+				input:    `Swan Song - From the Film "Alita: Battle Angel"`,
+				expected: "Swan Song",
+			},
+			{
+				input:    `Swan Song - From the Movie "Alita: Battle Angel"`,
+				expected: "Swan Song",
+			},
+			{
+				input:    `Swan Song (From the Motion Picture "Alita: Battle Angel")`,
+				expected: "Swan Song",
+			},
+			{
+				input:    "Swan Song - Soundtrack Version",
+				expected: "Swan Song",
+			},
+			{
+				input:    "Swan Song - Film Version",
+				expected: "Swan Song",
+			},
+			{
+				input:    "Swan Song - Movie Version",
+				expected: "Swan Song",
+			},
 			{
 				input:    "Song Title",
 				expected: "Song Title",
@@ -1146,9 +1175,10 @@ func TestSearchFlowSimulation(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			result := client.removeCommonSuffixes(tc.input)
+			result := client.RemoveCommonSuffixes(tc.input)
+			t.Logf("Testing: '%s' -> '%s' (expected: '%s')", tc.input, result, tc.expected)
 			if result != tc.expected {
-				t.Errorf("removeCommonSuffixes(%q) = %q, expected %q", tc.input, result, tc.expected)
+				t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", tc.input, result, tc.expected)
 			}
 		}
 	})
@@ -1261,7 +1291,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 		// Step 7: Suffix removal
 		t.Logf("Step 7: Suffix removal")
-		suffixTitle := client.removeCommonSuffixes(spotifySong.Name)
+		suffixTitle := client.RemoveCommonSuffixes(spotifySong.Name)
 		t.Logf("  Suffix removed: '%s'", suffixTitle)
 
 		// This should be the key step that finds "the lakes"
@@ -1485,8 +1515,8 @@ func TestSearchFlowSimulation(t *testing.T) {
 			strings.ToLower(strings.TrimSpace(client.removeWith("The Lakes"))),
 		)
 		suffixTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeCommonSuffixes("the lakes"))),
-			strings.ToLower(strings.TrimSpace(client.removeCommonSuffixes("The Lakes"))),
+			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes("the lakes"))),
+			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes("The Lakes"))),
 		)
 
 		t.Logf("Bracket-removed title similarity: %f", cleanTitleSimilarity)
@@ -1615,7 +1645,7 @@ func TestTheLakesConfidenceCalculation(t *testing.T) {
 	t.Logf("Artist similarity: %.6f", artistSimilarity)
 
 	// Test the suffix removal
-	suffixRemoved := client.removeCommonSuffixes("the lakes - bonus track")
+	suffixRemoved := client.RemoveCommonSuffixes("the lakes - bonus track")
 	t.Logf("Suffix removed: '%s'", suffixRemoved)
 
 	// Test suffix removal similarity
@@ -1767,8 +1797,8 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 		strings.ToLower(strings.TrimSpace(client.removeWith(plexTitle))),
 	)
 	suffixTitleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(client.removeCommonSuffixes(spotifyTitle))),
-		strings.ToLower(strings.TrimSpace(client.removeCommonSuffixes(plexTitle))),
+		strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(spotifyTitle))),
+		strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(plexTitle))),
 	)
 
 	t.Logf("Bracket-removed title similarity: %f", cleanTitleSimilarity)
@@ -1778,7 +1808,7 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 	t.Logf("Suffix-removed title similarity: %f", suffixTitleSimilarity)
 
 	// Show the actual transformed strings
-	t.Logf("Suffix-removed Spotify title: '%s'", client.removeCommonSuffixes(spotifyTitle))
+	t.Logf("Suffix-removed Spotify title: '%s'", client.RemoveCommonSuffixes(spotifyTitle))
 	t.Logf("Plex title: '%s'", plexTitle)
 
 	// Calculate the best title similarity
@@ -1805,7 +1835,7 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 
 	t.Logf("\nInvestigating word-level similarities:")
 
-	spotifyWords := strings.Fields(strings.ToLower(client.removeCommonSuffixes(spotifyTitle)))
+	spotifyWords := strings.Fields(strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle)))
 	plexWords := strings.Fields(strings.ToLower(plexTitle))
 
 	t.Logf("Spotify words: %v", spotifyWords)
@@ -1821,15 +1851,15 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 	}
 
 	// Test substring matching
-	if strings.Contains(strings.ToLower(client.removeCommonSuffixes(spotifyTitle)), strings.ToLower(plexTitle)) {
+	if strings.Contains(strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle)), strings.ToLower(plexTitle)) {
 		t.Logf("⚠️  Plex title is a substring of Spotify title!")
 	}
-	if strings.Contains(strings.ToLower(plexTitle), strings.ToLower(client.removeCommonSuffixes(spotifyTitle))) {
+	if strings.Contains(strings.ToLower(plexTitle), strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle))) {
 		t.Logf("⚠️  Spotify title is a substring of Plex title!")
 	}
 
 	// Test individual word matching
-	spotifyTitleLower := strings.ToLower(client.removeCommonSuffixes(spotifyTitle))
+	spotifyTitleLower := strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle))
 	plexTitleLower := strings.ToLower(plexTitle)
 
 	for _, word := range strings.Fields(spotifyTitleLower) {
@@ -2895,7 +2925,7 @@ func TestJessieWareSpotlightSingleEditMatching(t *testing.T) {
 	}
 
 	// Test that the suffix removal works correctly
-	cleanedTitle := client.removeCommonSuffixes(spotifySong.Name)
+	cleanedTitle := client.RemoveCommonSuffixes(spotifySong.Name)
 	if cleanedTitle != "Spotlight" {
 		t.Errorf("Expected 'Spotlight' after suffix removal, got '%s'", cleanedTitle)
 	}
@@ -3069,7 +3099,7 @@ func TestGetItRightSearchStrategies(t *testing.T) {
 		{"featuring removed", client.removeFeaturing},
 		{"normalized", client.normalizeTitle},
 		{"with removed", client.removeWith},
-		{"suffixes removed", client.removeCommonSuffixes},
+		{"suffixes removed", client.RemoveCommonSuffixes},
 	}
 
 	for _, strategy := range strategies {

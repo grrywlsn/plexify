@@ -351,6 +351,14 @@ The matching happens in a specific order, with each step trying different strate
 - `"Song Title - Acoustic"` → `"Song Title"`
 - `"Song Title (Bonus Track)"` → `"Song Title"`
 - `"Song Title (Remix)"` → `"Song Title"`
+- **Soundtrack suffixes:**
+  - `"Song Title - From the Motion Picture "Very Famous Movie""` → `"Song Title"`
+  - `"Song Title - From the Film "Very Famous Movie""` → `"Song Title"`
+  - `"Song Title - From the Movie "Very Famous Movie""` → `"Song Title"`
+  - `"Song Title (From the Motion Picture "Very Famous Movie")"` → `"Song Title"`
+  - `"Song Title - Soundtrack Version"` → `"Song Title"`
+  - `"Song Title - Film Version"` → `"Song Title"`
+  - `"Song Title - Movie Version"` → `"Song Title"`
 - And many more variations (clean, explicit, demo, instrumental, etc.)
 
 #### 8. **Full Library Search** (Eighth Priority - Fallback)
