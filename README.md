@@ -2,16 +2,16 @@
 
 A tool to sync Spotify playlists to playlists on your Plex server.
 
-Can be run manually as a CLI or scheduled as a cron task.
+Can be run manually as a CLI, or scheduled as a cron task.
 
 ## Features
 
 - 🔍 Fetch songs from Spotify playlists
-- 📋 Can take either a list of Spotify playlists, or find all public playlists by username
+- 📋 Can take either a [list of Spotify playlists, or find all public playlists by username](#5-finding-playlists)
 - 🎵 Extract track metadata (title, artist, album, duration, ISRC)
-- 🎯 Match songs to Plex library using title/artist matching
-- 📝 Create Plex playlists dynamically with matched songs
-- 🧠 Retrieve the MusicBrainz id for missing songs to make it easier to find them
+- 🎯 Match Spotify songs to Plex library using title/artist [using pre-defined rules](#matching-functions)
+- 📝 Create Plex playlists dynamically with matched songs, or update existing playlists
+- 🧠 [Retrieve the MusicBrainz id](#musicbrainz-integration) for missing songs to make it easier to find them
 
 ## Prerequisites
 
