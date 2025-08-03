@@ -71,7 +71,7 @@ Download `plexify-windows-amd64.exe` from the [releases page](https://github.com
 
    - The server ID can be automatically discovered from your Plex server
    - If auto-discovery fails, you can find it in the Plex Web UI URL or set it manually
-   - Leave `PLEX_SERVER_ID` empty in your `.env` file to enable auto-discovery
+   - If `PLEX_SERVER_ID` is unset, it will attempt auto-discovery
 
 ### 4. Configuration
 
