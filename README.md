@@ -25,16 +25,19 @@ Can be run manually as a CLI or scheduled as a cron task.
 Download the latest release for your platform from [GitHub Releases](https://github.com/grrywlsn/plexify/releases):
 
 **Linux (amd64):**
+
 ```bash
 wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-linux-amd64 -O plexify && chmod +x plexify
 ```
 
 **macOS (Intel):**
+
 ```bash
 wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-amd64 -O plexify && chmod +x plexify
 ```
 
 **macOS (Apple Silicon):**
+
 ```bash
 wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-arm64 -O plexify && chmod +x plexify
 ```
@@ -119,7 +122,7 @@ Or you can provide a Spotify username and all public playlists will be found and
 SPOTIFY_USERNAME=your_spotify_username_here
 ```
 
-Each Spotify playlist will be synced to a new Plex playlist with the exact same name as the original Spotify playlist.
+Each Spotify playlist will be synced to a new Plex playlist with the exact same name as the original Spotify playlist. If a playlist of the same name exists, it will update it to match the matched Spotify tracks - this **will remove other songs if they exist**.
 
 ## Results
 
