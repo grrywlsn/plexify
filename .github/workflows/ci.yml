@@ -209,49 +209,129 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist/
 
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous tag to determine the range for changes
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # If no previous tag, get all commits since the beginning
+            COMMIT_RANGE=""
+          else
+            COMMIT_RANGE="$PREVIOUS_TAG..HEAD"
+          fi
+          
+          # Get merged PRs since the last release
+          if [ -n "$COMMIT_RANGE" ]; then
+            MERGED_PRS=$(git log --merges --pretty=format:"%H %s" $COMMIT_RANGE | grep -E "Merge pull request #[0-9]+" || echo "")
+          else
+            MERGED_PRS=$(git log --merges --pretty=format:"%H %s" | grep -E "Merge pull request #[0-9]+" || echo "")
+          fi
+          
+          # Determine which version to use based on PR labels
+          if [[ "${{ contains(github.event.pull_request.labels.*.name, 'major') }}" == "true" ]]; then
+            VERSION="${{ needs.get-version.outputs.v_major }}"
+          elif [[ "${{ contains(github.event.pull_request.labels.*.name, 'minor') }}" == "true" ]]; then
+            VERSION="${{ needs.get-version.outputs.v_minor }}"
+          else
+            VERSION="${{ needs.get-version.outputs.v_patch }}"
+          fi
+          
+          # Generate release notes
+          RELEASE_NOTES="## Plexify $VERSION"
+          
+          if [ -n "$MERGED_PRS" ]; then
+            RELEASE_NOTES="$RELEASE_NOTES
+            
+            ### Changes in this release
+            
+            This release includes the following merged pull requests:"
+            
+            # Process each merged PR
+            while IFS= read -r line; do
+              if [[ $line =~ Merge\ pull\ request\ #([0-9]+) ]]; then
+                PR_NUMBER="${BASH_REMATCH[1]}"
+                COMMIT_HASH=$(echo "$line" | awk '{print $1}')
+                
+                # Get PR details using GitHub API
+                PR_INFO=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                  "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER")
+                
+                PR_TITLE=$(echo "$PR_INFO" | jq -r '.title // "Unknown"')
+                PR_USER=$(echo "$PR_INFO" | jq -r '.user.login // "Unknown"')
+                PR_LABELS=$(echo "$PR_INFO" | jq -r '.labels[].name // empty' | tr '\n' ', ' | sed 's/,$//')
+                
+                # Get commit message for more context
+                COMMIT_MSG=$(git log --format=%B -n 1 $COMMIT_HASH | head -n 1)
+                
+                RELEASE_NOTES="$RELEASE_NOTES
+                
+            **PR #$PR_NUMBER** by @$PR_USER
+            - **Title:** $PR_TITLE
+            - **Commit:** \`$COMMIT_HASH\`
+            - **Labels:** $PR_LABELS"
+              fi
+            done <<< "$MERGED_PRS"
+          else
+            RELEASE_NOTES="$RELEASE_NOTES
+            
+            ### Changes in this release
+            
+            This release includes direct commits and improvements."
+          fi
+          
+          # Add standard sections
+          RELEASE_NOTES="$RELEASE_NOTES
+          
+          ### Downloads
+          
+          **Linux:**
+          - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-linux-amd64)
+          - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-linux-arm64)
+          
+          **macOS:**
+          - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-darwin-amd64)
+          - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-darwin-arm64)
+          
+          **Windows:**
+          - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-windows-amd64.exe)
+          - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-windows-arm64.exe)
+          
+          ### Installation
+          
+          Download the appropriate binary for your platform and make it executable:
+          
+          \`\`\`bash
+          # Linux/macOS
+          chmod +x plexify-<platform>-<arch>
+          
+          # Windows
+          # No additional steps needed
+          \`\`\`
+          
+          ### Usage
+          
+          See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions."
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$RELEASE_NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.get-version.outputs.v_patch }}
           name: Release ${{ needs.get-version.outputs.v_patch }}
-          body: |
-            ## Plexify ${{ needs.get-version.outputs.v_patch }}
-            
-            ### Downloads
-            
-            **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-linux-arm64)
-            
-            **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-darwin-arm64)
-            
-            **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_patch }}/plexify-windows-arm64.exe)
-            
-            ### Installation
-            
-            Download the appropriate binary for your platform and make it executable:
-            
-            ```bash
-            # Linux/macOS
-            chmod +x plexify-<platform>-<arch>
-            
-            # Windows
-            # No additional steps needed
-            ```
-            
-            ### Usage
-            
-            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions.
+          body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
             dist/plexify-*
           draft: false
@@ -265,38 +345,7 @@ jobs:
         with:
           tag_name: ${{ needs.get-version.outputs.v_minor }}
           name: Release ${{ needs.get-version.outputs.v_minor }}
-          body: |
-            ## Plexify ${{ needs.get-version.outputs.v_minor }}
-            
-            ### Downloads
-            
-            **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-linux-arm64)
-            
-            **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-darwin-arm64)
-            
-            **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_minor }}/plexify-windows-arm64.exe)
-            
-            ### Installation
-            
-            Download the appropriate binary for your platform and make it executable:
-            
-            ```bash
-            # Linux/macOS
-            chmod +x plexify-<platform>-<arch>
-            
-            # Windows
-            # No additional steps needed
-            ```
-            
-            ### Usage
-            
-            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions.
+          body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
             dist/plexify-*
           draft: false
@@ -310,38 +359,7 @@ jobs:
         with:
           tag_name: ${{ needs.get-version.outputs.v_major }}
           name: Release ${{ needs.get-version.outputs.v_major }}
-          body: |
-            ## Plexify ${{ needs.get-version.outputs.v_major }}
-            
-            ### Downloads
-            
-            **Linux:**
-            - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-linux-amd64)
-            - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-linux-arm64)
-            
-            **macOS:**
-            - [plexify-darwin-amd64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-darwin-amd64)
-            - [plexify-darwin-arm64](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-darwin-arm64)
-            
-            **Windows:**
-            - [plexify-windows-amd64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-windows-amd64.exe)
-            - [plexify-windows-arm64.exe](https://github.com/${{ github.repository }}/releases/download/${{ needs.get-version.outputs.v_major }}/plexify-windows-arm64.exe)
-            
-            ### Installation
-            
-            Download the appropriate binary for your platform and make it executable:
-            
-            ```bash
-            # Linux/macOS
-            chmod +x plexify-<platform>-<arch>
-            
-            # Windows
-            # No additional steps needed
-            ```
-            
-            ### Usage
-            
-            See the [README](https://github.com/${{ github.repository }}/blob/main/README.md) for detailed usage instructions.
+          body: ${{ steps.release_notes.outputs.release_notes }}
           files: |
             dist/plexify-*
           draft: false

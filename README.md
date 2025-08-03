@@ -10,6 +10,7 @@ A tool to sync Spotify playlists to Plex music libraries.
 - 🎯 Match songs to Plex library using title/artist matching
 - 📝 Create Plex playlists dynamically with matched songs
 - 🧠 Retrieve the MusicBrainz id for missing songs to make it easier to find them
+- 📝 Automatic release notes generation with PR information
 
 ## Prerequisites
 
@@ -37,6 +38,24 @@ chmod +x plexify-darwin-arm64
 
 # Windows
 # Download plexify-windows-amd64.exe from the releases page
+```
+
+### Release Notes
+
+Each release includes comprehensive release notes that automatically list:
+- All merged pull requests since the last release
+- PR details including title, author, and labels
+- Download links for all supported platforms
+- Installation and usage instructions
+
+To preview release notes for the next version:
+```bash
+make release-notes-preview
+```
+
+To generate release notes for a specific version:
+```bash
+make release-notes VERSION=v1.0.0 PREVIOUS_TAG=v0.9.0
 ```
 
 ### 2. Spotify API Setup
