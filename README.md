@@ -26,16 +26,13 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 ```bash
 # Linux (amd64)
-wget https://github.com/garry/plexify/releases/latest/download/plexify-linux-amd64
-chmod +x plexify-linux-amd64
+wget https://github.com/garry/plexify/releases/latest/download/plexify-linux-amd64 -O plexify && chmod +x plexify
 
 # macOS (Intel)
-wget https://github.com/garry/plexify/releases/latest/download/plexify-darwin-amd64
-chmod +x plexify-darwin-amd64
+wget https://github.com/garry/plexify/releases/latest/download/plexify-darwin-amd64 -O plexify && chmod +x plexify
 
 # macOS (Apple Silicon)
-wget https://github.com/garry/plexify/releases/latest/download/plexify-darwin-arm64
-chmod +x plexify-darwin-arm64
+wget https://github.com/garry/plexify/releases/latest/download/plexify-darwin-arm64 -O plexify && chmod +x plexify
 
 # Windows
 # Download plexify-windows-amd64.exe from the releases page
