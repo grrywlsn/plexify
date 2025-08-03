@@ -27,8 +27,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
+            ${{ github.workspace }}/.cache
+            ${{ github.workspace }}/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
@@ -146,8 +146,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
+            ${{ github.workspace }}/.cache
+            ${{ github.workspace }}/go/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
@@ -164,16 +164,24 @@ jobs:
             main.go
 
       - name: Create checksum
+        shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             certutil -hashfile ${{ env.BINARY_NAME }} SHA256 > ${{ env.BINARY_NAME }}.sha256
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            shasum -a 256 ${{ env.BINARY_NAME }} > ${{ env.BINARY_NAME }}.sha256
           else
             sha256sum ${{ env.BINARY_NAME }} > ${{ env.BINARY_NAME }}.sha256
           fi
 
       - name: Rename binary
+        shell: bash
         run: |
-          mv ${{ env.BINARY_NAME }} ${{ matrix.artifact_name }}
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            move ${{ env.BINARY_NAME }} ${{ matrix.artifact_name }}
+          else
+            mv ${{ env.BINARY_NAME }} ${{ matrix.artifact_name }}
+          fi
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
