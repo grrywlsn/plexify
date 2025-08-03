@@ -1,0 +1,56 @@
+name: Auto Release on PR Merge
+on:
+  pull_request:
+    types: [closed]
+jobs:
+  auto-release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 'Get Previous tag'
+        id: previoustag
+        uses: "WyriHaximus/github-action-get-previous-tag@v1"
+        with:
+          fallback: 0.0.0
+        env:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: 'Get next version'
+        id: semvers
+        uses: "WyriHaximus/github-action-next-semvers@v1"
+        with:
+          version: ${{ steps.previoustag.outputs.tag }}
+
+      - name: Create patch release
+        if: contains(github.event.pull_request.labels.*.name, 'patch')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: "${{ steps.semvers.outputs.v_patch }}"
+          draft: true
+          prerelease: false
+
+      - name: Create minor release
+        if: contains(github.event.pull_request.labels.*.name, 'minor')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: "${{ steps.semvers.outputs.v_minor }}"
+          draft: true
+          prerelease: false
+
+      - name: Create major release
+        if: contains(github.event.pull_request.labels.*.name, 'major')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag_name: "${{ steps.semvers.outputs.v_major }}"
+          draft: true
+          prerelease: false
