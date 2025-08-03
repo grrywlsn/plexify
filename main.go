@@ -336,12 +336,15 @@ func (app *Application) printNoPlaylistsMessage() {
 	fmt.Println("Please provide either:")
 	fmt.Println("  - SPOTIFY_USERNAME environment variable to fetch all public playlists for a user")
 	fmt.Println("  - SPOTIFY_PLAYLIST_ID environment variable with comma-separated playlist IDs")
-	fmt.Println("  - -username command line flag to specify a Spotify username")
-	fmt.Println("  - -playlists command line flag to specify playlist IDs")
+	fmt.Println("  - -SPOTIFY_USERNAME command line flag to specify a Spotify username")
+	fmt.Println("  - -SPOTIFY_PLAYLIST_ID command line flag to specify playlist IDs")
 	fmt.Println("\nExample:")
+	fmt.Println("  ./plexify -SPOTIFY_USERNAME your_spotify_username")
+	fmt.Println("  ./plexify -SPOTIFY_PLAYLIST_ID 37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N")
+	fmt.Println("  ./plexify --DEBUG -SPOTIFY_PLAYLIST_ID 37i9dQZF1DXcBWIGoYBM5M  # with debug output")
+	fmt.Println("\nLegacy flags (still supported):")
 	fmt.Println("  ./plexify -username your_spotify_username")
 	fmt.Println("  ./plexify -playlists 37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N")
-	fmt.Println("  ./plexify -debug -playlists 37i9dQZF1DXcBWIGoYBM5M  # with debug output")
 }
 
 // Global debug flag
@@ -352,13 +355,33 @@ func IsDebugMode() bool {
 	return debugMode
 }
 
-// parseFlags parses command line flags and updates configuration
-func parseFlags(cfg *config.Config) {
+// parseFlags parses command line flags and returns overrides map
+func parseFlags() map[string]string {
+	overrides := make(map[string]string)
+
+	// Spotify configuration flags
+	var spotifyClientID, spotifyClientSecret, spotifyRedirectURI, spotifyUsername, spotifyPlaylistID string
+	flag.StringVar(&spotifyClientID, "SPOTIFY_CLIENT_ID", "", "Spotify Client ID (overrides env var)")
+	flag.StringVar(&spotifyClientSecret, "SPOTIFY_CLIENT_SECRET", "", "Spotify Client Secret (overrides env var)")
+	flag.StringVar(&spotifyRedirectURI, "SPOTIFY_REDIRECT_URI", "", "Spotify Redirect URI (overrides env var)")
+	flag.StringVar(&spotifyUsername, "SPOTIFY_USERNAME", "", "Spotify username to fetch all public playlists (overrides env var)")
+	flag.StringVar(&spotifyPlaylistID, "SPOTIFY_PLAYLIST_ID", "", "Comma-separated list of Spotify playlist IDs (overrides env var)")
+
+	// Plex configuration flags
+	var plexURL, plexToken, plexLibrarySectionID, plexServerID string
+	flag.StringVar(&plexURL, "PLEX_URL", "", "Plex server URL (overrides env var)")
+	flag.StringVar(&plexToken, "PLEX_TOKEN", "", "Plex authentication token (overrides env var)")
+	flag.StringVar(&plexLibrarySectionID, "PLEX_LIBRARY_SECTION_ID", "", "Plex library section ID (overrides env var)")
+	flag.StringVar(&plexServerID, "PLEX_SERVER_ID", "", "Plex server ID (overrides env var)")
+
+	// Legacy flags for backward compatibility
 	var playlistIDs string
-	flag.StringVar(&playlistIDs, "playlists", "", "Comma-separated list of Spotify playlist IDs (overrides SPOTIFY_PLAYLIST_ID env var)")
-	var spotifyUsername string
-	flag.StringVar(&spotifyUsername, "username", "", "Spotify username to fetch all public playlists (overrides SPOTIFY_USERNAME env var)")
-	flag.BoolVar(&debugMode, "debug", false, "Enable debug output (detailed matching and similarity information)")
+	flag.StringVar(&playlistIDs, "playlists", "", "Comma-separated list of Spotify playlist IDs (legacy, use SPOTIFY_PLAYLIST_ID instead)")
+	var legacyUsername string
+	flag.StringVar(&legacyUsername, "username", "", "Spotify username (legacy, use SPOTIFY_USERNAME instead)")
+
+	// Other flags
+	flag.BoolVar(&debugMode, "DEBUG", false, "Enable debug output (detailed matching and similarity information)")
 
 	// Version flag
 	var showVersion bool
@@ -372,30 +395,61 @@ func parseFlags(cfg *config.Config) {
 		os.Exit(0)
 	}
 
-	// Use command line playlist IDs if provided, otherwise use config
-	if playlistIDs != "" {
-		playlistIDList := strings.Split(playlistIDs, ",")
-		for i, id := range playlistIDList {
-			playlistIDList[i] = strings.TrimSpace(id)
-		}
-		cfg.Spotify.PlaylistIDs = playlistIDList
+	// Build overrides map from non-empty values
+	if spotifyClientID != "" {
+		overrides["SPOTIFY_CLIENT_ID"] = spotifyClientID
+	}
+	if spotifyClientSecret != "" {
+		overrides["SPOTIFY_CLIENT_SECRET"] = spotifyClientSecret
+	}
+	if spotifyRedirectURI != "" {
+		overrides["SPOTIFY_REDIRECT_URI"] = spotifyRedirectURI
+	}
+	if spotifyUsername != "" {
+		overrides["SPOTIFY_USERNAME"] = spotifyUsername
+	}
+	if spotifyPlaylistID != "" {
+		overrides["SPOTIFY_PLAYLIST_ID"] = spotifyPlaylistID
+	}
+	if plexURL != "" {
+		overrides["PLEX_URL"] = plexURL
+	}
+	if plexToken != "" {
+		overrides["PLEX_TOKEN"] = plexToken
+	}
+	if plexLibrarySectionID != "" {
+		overrides["PLEX_LIBRARY_SECTION_ID"] = plexLibrarySectionID
+	}
+	if plexServerID != "" {
+		overrides["PLEX_SERVER_ID"] = plexServerID
 	}
 
-	// Use command line username if provided, otherwise use config
-	if spotifyUsername != "" {
-		cfg.Spotify.Username = spotifyUsername
+	// Handle legacy flags
+	if playlistIDs != "" {
+		overrides["SPOTIFY_PLAYLIST_ID"] = playlistIDs
 	}
+	if legacyUsername != "" {
+		overrides["SPOTIFY_USERNAME"] = legacyUsername
+	}
+
+	return overrides
 }
 
 func main() {
-	// Load configuration
-	cfg, err := config.Load()
-	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
-	}
+	// Parse command line flags first
+	overrides := parseFlags()
 
-	// Parse command line flags
-	parseFlags(cfg)
+	// Load configuration with CLI overrides
+	cfg, err := config.LoadWithOverrides(overrides)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Configuration Error:\n%s\n\n", err)
+		fmt.Fprintf(os.Stderr, "💡 Quick Setup:\n")
+		fmt.Fprintf(os.Stderr, "1. Create a .env file with your settings, or\n")
+		fmt.Fprintf(os.Stderr, "2. Set environment variables, or\n")
+		fmt.Fprintf(os.Stderr, "3. Use CLI flags (e.g., -SPOTIFY_CLIENT_ID=your_id)\n\n")
+		fmt.Fprintf(os.Stderr, "📖 See README.md for detailed configuration options\n")
+		os.Exit(1)
+	}
 
 	// Create application
 	app, err := NewApplication(cfg)

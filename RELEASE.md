@@ -213,7 +213,7 @@ For debugging build issues:
 
 ```bash
 # Enable debug output
-./plexify -debug
+./plexify --DEBUG
 
 # Check version
 ./plexify -version
