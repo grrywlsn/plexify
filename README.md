@@ -15,7 +15,7 @@ Can be run manually as a CLI or scheduled as a cron task.
 
 ## Prerequisites
 
-- Spotify API credentials
+- Spotify API credentials (**not** your username and password)
 - Plex Media Server with music library, and the `X-Plex-Token` token
 
 ## Quick Start
