@@ -282,7 +282,7 @@ func (app *Application) displayMissingTracksSummary(missingTracks []plex.MatchRe
 
 	for i, result := range missingTracks {
 		fmt.Printf("%3d. %s - %s\n", i+1, result.SpotifySong.Artist, result.SpotifySong.Name)
-		fmt.Printf("     Spotify track ID: %s\n", result.SpotifySong.ID)
+		fmt.Printf("     Spotify track ID: %s - https://open.spotify.com/track/%s\n", result.SpotifySong.ID, result.SpotifySong.ID)
 		if result.SpotifySong.ISRC != "" {
 			fmt.Printf("     ISRC: %s\n", result.SpotifySong.ISRC)
 		} else {

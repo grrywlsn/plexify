@@ -1135,47 +1135,48 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    "Song Title - Bonus",
 				expected: "Song Title",
 			},
-					{
-			input:    "Song Title - Track",
-			expected: "Song Title",
-		},
-		// Soundtrack suffix tests
-		{
-			input:    `Swan Song - From the Motion Picture "Alita: Battle Angel"`,
-			expected: "Swan Song",
-		},
-		{
-			input:    `Swan Song - From the Film "Alita: Battle Angel"`,
-			expected: "Swan Song",
-		},
-		{
-			input:    `Swan Song - From the Movie "Alita: Battle Angel"`,
-			expected: "Swan Song",
-		},
-		{
-			input:    `Swan Song (From the Motion Picture "Alita: Battle Angel")`,
-			expected: "Swan Song",
-		},
-		{
-			input:    "Swan Song - Soundtrack Version",
-			expected: "Swan Song",
-		},
-		{
-			input:    "Swan Song - Film Version",
-			expected: "Swan Song",
-		},
-		{
-			input:    "Swan Song - Movie Version",
-			expected: "Swan Song",
-		},
-		{
-			input:    "Song Title",
-			expected: "Song Title",
-		},
+			{
+				input:    "Song Title - Track",
+				expected: "Song Title",
+			},
+			// Soundtrack suffix tests
+			{
+				input:    `Swan Song - From the Motion Picture "Alita: Battle Angel"`,
+				expected: "Swan Song",
+			},
+			{
+				input:    `Swan Song - From the Film "Alita: Battle Angel"`,
+				expected: "Swan Song",
+			},
+			{
+				input:    `Swan Song - From the Movie "Alita: Battle Angel"`,
+				expected: "Swan Song",
+			},
+			{
+				input:    `Swan Song (From the Motion Picture "Alita: Battle Angel")`,
+				expected: "Swan Song",
+			},
+			{
+				input:    "Swan Song - Soundtrack Version",
+				expected: "Swan Song",
+			},
+			{
+				input:    "Swan Song - Film Version",
+				expected: "Swan Song",
+			},
+			{
+				input:    "Swan Song - Movie Version",
+				expected: "Swan Song",
+			},
+			{
+				input:    "Song Title",
+				expected: "Song Title",
+			},
 		}
 
 		for _, tc := range testCases {
 			result := client.RemoveCommonSuffixes(tc.input)
+			t.Logf("Testing: '%s' -> '%s' (expected: '%s')", tc.input, result, tc.expected)
 			if result != tc.expected {
 				t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", tc.input, result, tc.expected)
 			}
