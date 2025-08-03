@@ -65,7 +65,7 @@ Download `plexify-windows-amd64.exe` from the [releases page](https://github.com
 
    - Go to your Plex server web interface
    - Navigate to your music library
-   - The section ID is in the URL: `http://your-server:32400/web/index.html#!/media/plex/:/server/{server-id}/section/{section-id}/all`
+   - The section ID is in the URL as the `source`: `https://app.plex.tv/desktop/#!/media/abcdefg12345678/com.plexapp.plugins.library?source=6`
    - Or check the Plex logs for section information
 3. **Server ID (Optional - Auto-discovered)**:
 
