@@ -122,7 +122,8 @@ Or you can provide a Spotify username and all public playlists will be found and
 SPOTIFY_USERNAME=your_spotify_username_here
 ```
 
-Each Spotify playlist will be synced to a new Plex playlist with the exact same name as the original. If a playlist of the same name exists in Plex, it will update it to match the matched Spotify tracks - this **will remove other songs if they exist**.
+> [!IMPORTANT]
+> Each Spotify playlist will be synced to a new Plex playlist with the exact same name as the original. If a playlist of the same name exists in Plex, it will update it to match the matched Spotify tracks - this **will remove other songs if they exist**.
 
 ## Results
 
