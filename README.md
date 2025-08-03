@@ -10,7 +10,6 @@ A tool to sync Spotify playlists to playlists on your Plex server.
 - 🎯 Match songs to Plex library using title/artist matching
 - 📝 Create Plex playlists dynamically with matched songs
 - 🧠 Retrieve the MusicBrainz id for missing songs to make it easier to find them
-- 📝 Automatic release notes generation with PR information
 
 ## Prerequisites
 
