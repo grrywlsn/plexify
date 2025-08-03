@@ -2,6 +2,8 @@
 
 A tool to sync Spotify playlists to playlists on your Plex server.
 
+Can be run manually as a CLI or scheduled as a cron task.
+
 ## Features
 
 - 🔍 Fetch songs from Spotify playlists
