@@ -26,21 +26,21 @@ Download the latest release for your platform from [GitHub Releases](https://git
 
 **Linux (amd64):**
 ```bash
-wget https://github.com/garry/plexify/releases/latest/download/plexify-linux-amd64 -O plexify && chmod +x plexify
+wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-linux-amd64 -O plexify && chmod +x plexify
 ```
 
 **macOS (Intel):**
 ```bash
-wget https://github.com/garry/plexify/releases/latest/download/plexify-darwin-amd64 -O plexify && chmod +x plexify
+wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-amd64 -O plexify && chmod +x plexify
 ```
 
 **macOS (Apple Silicon):**
 ```bash
-wget https://github.com/garry/plexify/releases/latest/download/plexify-darwin-arm64 -O plexify && chmod +x plexify
+wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-arm64 -O plexify && chmod +x plexify
 ```
 
 **Windows:**
-Download `plexify-windows-amd64.exe` from the [releases page](https://github.com/garry/plexify/releases) and rename to `plexify.exe`
+Download `plexify-windows-amd64.exe` from the [releases page](https://github.com/grrywlsn/plexify/releases) and rename to `plexify.exe`
 
 ### 2. Spotify API Setup
 
