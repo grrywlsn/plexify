@@ -9,7 +9,7 @@ Can be run manually as a CLI, or scheduled as a cron task.
 - 🔍 Fetch songs from Spotify playlists
 - 📋 Can take either a [list of Spotify playlists, or find all public playlists by username](#5-finding-playlists)
 - 🎵 Extract track metadata (title, artist, album, duration, ISRC)
-- 🎯 Match Spotify songs to Plex library using title/artist [using pre-defined rules](#matching-rules)
+- 🎯 Match Spotify songs to Plex library using title/artist [using pre-defined rules](#matching-order-and-rules)
 - 📝 Create Plex playlists dynamically with matched songs, or update existing playlists
 - 🧠 [Retrieve the MusicBrainz id](#musicbrainz-integration) for missing songs to make it easier to find them
 
