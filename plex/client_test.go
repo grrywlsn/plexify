@@ -266,7 +266,7 @@ func TestNormalizeAccents(t *testing.T) {
 		{"François", "Francois"},
 		{"Björk", "Bjork"},
 		{"Mötley Crüe", "Motley Crue"},
-		{"Kraftwerk", "Kraftwerk"}, // No accents, should remain unchanged
+		{"Kraftwerk", "Kraftwerk"},     // No accents, should remain unchanged
 		{"The Beatles", "The Beatles"}, // No accents, should remain unchanged
 		{"Música", "Musica"},
 		{"Canción", "Cancion"},
@@ -277,11 +277,11 @@ func TestNormalizeAccents(t *testing.T) {
 		{"Español", "Espanol"},
 		{"Português", "Portugues"},
 		{"Français", "Francais"},
-		{"Deutsch", "Deutsch"}, // No accents, should remain unchanged
+		{"Deutsch", "Deutsch"},   // No accents, should remain unchanged
 		{"Italiano", "Italiano"}, // No accents, should remain unchanged
-		{"Русский", "Русский"}, // Cyrillic, should remain unchanged
-		{"中文", "中文"}, // Chinese, should remain unchanged
-		{"日本語", "日本語"}, // Japanese, should remain unchanged
+		{"Русский", "Русский"},   // Cyrillic, should remain unchanged
+		{"中文", "中文"},             // Chinese, should remain unchanged
+		{"日本語", "日本語"},           // Japanese, should remain unchanged
 	}
 
 	for _, test := range tests {
@@ -330,19 +330,19 @@ func TestAccentMatchingScenario(t *testing.T) {
 
 	// Verify that accent normalization improves matching
 	if accentSimilarity <= originalSimilarity {
-		t.Errorf("Accent normalization should improve matching: original=%.3f, normalized=%.3f", 
+		t.Errorf("Accent normalization should improve matching: original=%.3f, normalized=%.3f",
 			originalSimilarity, accentSimilarity)
 	}
 
 	// Test if they would match with the confidence threshold
 	confidence := (accentSimilarity * 0.7) + (1.0 * 0.3) // Assuming perfect artist match
 	t.Logf("Confidence score: %.3f", confidence)
-	
+
 	if confidence < 0.7 {
 		t.Errorf("Should match with confidence threshold: confidence=%.3f, threshold=0.7", confidence)
 	}
 
-	t.Logf("✅ Accent normalization successfully improves matching from %.3f to %.3f", 
+	t.Logf("✅ Accent normalization successfully improves matching from %.3f to %.3f",
 		originalSimilarity, accentSimilarity)
 }
 

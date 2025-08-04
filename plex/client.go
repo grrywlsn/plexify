@@ -1667,7 +1667,7 @@ func (c *Client) normalizeAccents(s string) string {
 		'ẋ': 'x', 'ẍ': 'x',
 		'ỳ': 'y', 'ỹ': 'y', 'ỷ': 'y',
 		'ẑ': 'z', 'ẓ': 'z', 'ẕ': 'z',
-		
+
 		// Spanish/Portuguese accents - uppercase
 		'Á': 'A', 'À': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A', 'Å': 'A', 'Ā': 'A', 'Ă': 'A', 'Ą': 'A',
 		'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E', 'Ē': 'E', 'Ĕ': 'E', 'Ė': 'E', 'Ę': 'E',
