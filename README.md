@@ -328,3 +328,43 @@ If you run into issues where plexify will not match a song that you know is in y
 
 Please copy/paste them **exactly** as they appear in each source, so that the matching can be tested.
 
+### Debug mode
+
+You can enable debug logs (`DEBUG=true`) to see the rules being evaluated and how they are scored.
+
+It should help make it clear why one song wins over another, and can be included when raising the issues above.
+
+```
+2025/08/04 08:52:40 ⏭️  FindBestMatch: skipping 'Can’t Get You Out of My Head (Deluxe’s Dirty Dub)' by 'Kylie Minogue' (score: 0.361, current best: 0.385)
+2025/08/04 08:52:40 🔍 FindBestMatch: 'Out Of My Head' by 'Loote' -> 'Can't Get You Out of My Head' by 'Kylie Minogue'
+2025/08/04 08:52:40    Original title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Original artist similarity: 0.115 ('loote' vs 'kylie minogue')
+2025/08/04 08:52:40    Clean title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Featuring-removed title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Normalized title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    'With'-removed title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Suffix-removed title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Punctuation-normalized title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Final title similarity: 0.500
+2025/08/04 08:52:40    Final artist similarity: 0.115
+2025/08/04 08:52:40    Combined score: 0.385 (0.500 * 0.7 + 0.115 * 0.3)
+2025/08/04 08:52:40 ⏭️  FindBestMatch: skipping 'Can't Get You Out of My Head' by 'Kylie Minogue' (score: 0.385, current best: 0.385)
+2025/08/04 08:52:40 🔍 FindBestMatch: 'Out Of My Head' by 'Loote' -> 'Out of My Head' by 'Various Artists'
+2025/08/04 08:52:40    Original title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Original artist similarity: 0.100 ('loote' vs 'various artists')
+2025/08/04 08:52:40    Clean title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Featuring-removed title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Normalized title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    'With'-removed title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Suffix-removed title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Punctuation-normalized title similarity: 1.000 ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Final title similarity: 1.000
+2025/08/04 08:52:40    Final artist similarity: 0.100
+2025/08/04 08:52:40    Combined score: 0.730 (1.000 * 0.7 + 0.100 * 0.3)
+2025/08/04 08:52:40 🎵 FindBestMatch: allowing 'Various Artists' compilation match 'Out of My Head' by 'Various Artists' (title: 1.000 > 0.9, artist: 0.100 < 0.3 but is Various Artists)
+2025/08/04 08:52:40 🎵 FindBestMatch: allowing 'Various Artists' compilation match 'Out of My Head' by 'Various Artists' (title: 1.000 > 0.7, artist: 0.100 < 0.2 but is Various Artists)
+2025/08/04 08:52:40 📈 FindBestMatch: new best match 'Out of My Head' by 'Various Artists' (score: 0.730 > 0.385, title: 1.000, artist: 0.100)
+2025/08/04 08:52:40 ✅ FindBestMatch: FINAL RESULT - returning match 'Out of My Head' by 'Various Artists' (score: 0.730 >= 0.700) for search 'Out Of My Head' by 'Loote'
+2025/08/04 08:52:40 ✅ searchByTitle: found match 'Out of My Head' by 'Various Artists'
+2025/08/04 08:52:40 ✅ SearchTrack: found match 'Out of My Head' by 'Various Artists' using exact title/artist
+```
