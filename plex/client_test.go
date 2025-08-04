@@ -1139,6 +1139,14 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    "Song Title - Track",
 				expected: "Song Title",
 			},
+			{
+				input:    "Song Title - Remastered",
+				expected: "Song Title",
+			},
+			{
+				input:    "Song Title (Remastered)",
+				expected: "Song Title",
+			},
 			// Soundtrack suffix tests
 			{
 				input:    `Swan Song - From the Motion Picture "Alita: Battle Angel"`,
@@ -1167,6 +1175,22 @@ func TestSearchFlowSimulation(t *testing.T) {
 			{
 				input:    "Swan Song - Movie Version",
 				expected: "Swan Song",
+			},
+			{
+				input:    `Take My Breath Away - Love Theme from "Top Gun"`,
+				expected: "Take My Breath Away",
+			},
+			{
+				input:    `Take My Breath Away (Love Theme from "Top Gun")`,
+				expected: "Take My Breath Away",
+			},
+			{
+				input:    `Song Title - Love Theme from "Movie Name"`,
+				expected: "Song Title",
+			},
+			{
+				input:    `Song Title (Love Theme from "Movie Name")`,
+				expected: "Song Title",
 			},
 			{
 				input:    "Song Title",

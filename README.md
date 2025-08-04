@@ -302,13 +302,17 @@ The MusicBrainz ID can be used to:
 - `"Song Title - Radio Edit"` → `"Song Title"`
 - `"Song Title - Live"` → `"Song Title"`
 - `"Song Title - Acoustic"` → `"Song Title"`
+- `"Song Title - Remastered"` → `"Song Title"`
 - `"Song Title (Bonus Track)"` → `"Song Title"`
 - `"Song Title (Remix)"` → `"Song Title"`
+- `"Song Title (Remastered)"` → `"Song Title"`
 - **Soundtrack suffixes:**
   - `"Song Title - From the Motion Picture "Very Famous Movie""` → `"Song Title"`
   - `"Song Title - From the Film "Very Famous Movie""` → `"Song Title"`
   - `"Song Title - From the Movie "Very Famous Movie""` → `"Song Title"`
+  - `"Song Title - Love Theme from "Very Famous Movie""` → `"Song Title"`
   - `"Song Title (From the Motion Picture "Very Famous Movie")"` → `"Song Title"`
+  - `"Song Title (Love Theme from "Very Famous Movie")"` → `"Song Title"`
   - `"Song Title - Soundtrack Version"` → `"Song Title"`
   - `"Song Title - Film Version"` → `"Song Title"`
   - `"Song Title - Movie Version"` → `"Song Title"`
