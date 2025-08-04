@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -14,7 +13,6 @@ import (
 type Config struct {
 	Spotify SpotifyConfig
 	Plex    PlexConfig
-	App     AppConfig
 }
 
 // SpotifyConfig holds Spotify API configuration
@@ -34,32 +32,22 @@ type PlexConfig struct {
 	ServerID         string
 }
 
-// AppConfig holds application-level configuration
-type AppConfig struct {
-	// Reserved for future use
-}
-
-// Load loads configuration from environment variables
+// Load loads configuration following the specified order:
+// 1. Start with empty values (except SPOTIFY_REDIRECT_URI which defaults to http://localhost:8080/callback)
+// 2. Load from OS environment variables (only if they exist)
+// 3. Load from .env file (only if it exists and values exist)
+// 4. Apply CLI flag overrides (only if they exist)
 func Load() (*Config, error) {
-	// Load environment variables from .env file
-	if err := loadEnvFile(); err != nil {
-		log.Printf(".env file not found, using system environment variables")
-	}
-
 	config := &Config{}
 
-	// Load Spotify configuration
-	if err := config.loadSpotifyConfig(); err != nil {
-		return nil, fmt.Errorf("failed to load Spotify config: %w", err)
-	}
+	// Step 1: Initialize with default values
+	config.initializeDefaults()
 
-	// Load Plex configuration
-	if err := config.loadPlexConfig(); err != nil {
-		return nil, fmt.Errorf("failed to load Plex config: %w", err)
-	}
+	// Step 2: Load from OS environment variables (only if they exist)
+	config.loadFromOSEnv()
 
-	// Load application configuration
-	config.loadAppConfig()
+	// Step 3: Load from .env file (only if it exists and values exist)
+	config.loadFromEnvFile()
 
 	// Validate required configuration
 	if err := config.validate(); err != nil {
@@ -71,16 +59,21 @@ func Load() (*Config, error) {
 
 // LoadWithOverrides loads configuration and applies CLI flag overrides
 func LoadWithOverrides(overrides map[string]string) (*Config, error) {
-	// Load base configuration
-	config, err := Load()
-	if err != nil {
-		return nil, err
-	}
+	config := &Config{}
 
-	// Apply CLI flag overrides
+	// Step 1: Initialize with default values
+	config.initializeDefaults()
+
+	// Step 2: Load from OS environment variables (only if they exist)
+	config.loadFromOSEnv()
+
+	// Step 3: Load from .env file (only if it exists and values exist)
+	config.loadFromEnvFile()
+
+	// Step 4: Apply CLI flag overrides (only if they exist)
 	config.applyOverrides(overrides)
 
-	// Re-validate after overrides
+	// Validate required configuration after all sources have been loaded
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -88,59 +81,99 @@ func LoadWithOverrides(overrides map[string]string) (*Config, error) {
 	return config, nil
 }
 
-// loadEnvFile loads environment variables from .env file
-func loadEnvFile() error {
-	return godotenv.Load()
-}
-
-// loadSpotifyConfig loads Spotify configuration from environment variables
-func (c *Config) loadSpotifyConfig() error {
-	// Load playlist IDs from comma-separated list
-	playlistIDsStr := getEnv("SPOTIFY_PLAYLIST_ID", "")
-	var playlistIDs []string
-
-	if playlistIDsStr != "" {
-		playlistIDs = parseCommaSeparatedList(playlistIDsStr)
-	}
-
+// initializeDefaults sets up the initial configuration with default values
+func (c *Config) initializeDefaults() {
 	c.Spotify = SpotifyConfig{
-		ClientID:     getEnv("SPOTIFY_CLIENT_ID", ""),
-		ClientSecret: getEnv("SPOTIFY_CLIENT_SECRET", ""),
-		RedirectURI:  getEnv("SPOTIFY_REDIRECT_URI", "http://localhost:8080/callback"),
-		Username:     getEnv("SPOTIFY_USERNAME", ""),
-		PlaylistIDs:  playlistIDs,
-	}
-
-	return nil
-}
-
-// loadPlexConfig loads Plex configuration from environment variables
-func (c *Config) loadPlexConfig() error {
-	// Load library section ID
-	librarySectionID, err := parseLibrarySectionID(getEnv("PLEX_LIBRARY_SECTION_ID", "0"))
-	if err != nil {
-		return fmt.Errorf("invalid PLEX_LIBRARY_SECTION_ID: %w", err)
+		ClientID:     "",                               // Empty by default
+		ClientSecret: "",                               // Empty by default
+		RedirectURI:  "http://localhost:8080/callback", // Default value
+		Username:     "",                               // Empty by default
+		PlaylistIDs:  nil,                              // Empty by default
 	}
 
 	c.Plex = PlexConfig{
-		URL:              getEnv("PLEX_URL", ""),
-		Token:            getEnv("PLEX_TOKEN", ""),
-		LibrarySectionID: librarySectionID,
-		ServerID:         getEnv("PLEX_SERVER_ID", ""),
+		URL:              "", // Empty by default
+		Token:            "", // Empty by default
+		LibrarySectionID: 0,  // Empty by default
+		ServerID:         "", // Empty by default (will be auto-discovered)
 	}
-
-	// Log auto-discovery message if server ID is not set
-	if c.Plex.ServerID == "" {
-		log.Printf("PLEX_SERVER_ID not set, attempting to auto-discover from server...")
-	}
-
-	return nil
 }
 
-// loadAppConfig loads application configuration from environment variables
-func (c *Config) loadAppConfig() {
-	c.App = AppConfig{
-		// Reserved for future use
+// loadFromOSEnv loads configuration from OS environment variables (only if they exist)
+func (c *Config) loadFromOSEnv() {
+	// Spotify configuration
+	if value := os.Getenv("SPOTIFY_CLIENT_ID"); value != "" {
+		c.Spotify.ClientID = value
+	}
+	if value := os.Getenv("SPOTIFY_CLIENT_SECRET"); value != "" {
+		c.Spotify.ClientSecret = value
+	}
+	if value := os.Getenv("SPOTIFY_REDIRECT_URI"); value != "" {
+		c.Spotify.RedirectURI = value
+	}
+	if value := os.Getenv("SPOTIFY_USERNAME"); value != "" {
+		c.Spotify.Username = value
+	}
+	if value := os.Getenv("SPOTIFY_PLAYLIST_ID"); value != "" {
+		c.Spotify.PlaylistIDs = parseCommaSeparatedList(value)
+	}
+
+	// Plex configuration
+	if value := os.Getenv("PLEX_URL"); value != "" {
+		c.Plex.URL = value
+	}
+	if value := os.Getenv("PLEX_TOKEN"); value != "" {
+		c.Plex.Token = value
+	}
+	if value := os.Getenv("PLEX_LIBRARY_SECTION_ID"); value != "" {
+		if sectionID, err := parseLibrarySectionID(value); err == nil {
+			c.Plex.LibrarySectionID = sectionID
+		}
+	}
+	if value := os.Getenv("PLEX_SERVER_ID"); value != "" {
+		c.Plex.ServerID = value
+	}
+}
+
+// loadFromEnvFile loads configuration from .env file (only if it exists and values exist)
+func (c *Config) loadFromEnvFile() {
+	// Load .env file if it exists
+	if err := godotenv.Load(); err != nil {
+		// .env file doesn't exist, skip this step
+		return
+	}
+
+	// Spotify configuration (only replace if values exist and are not empty)
+	if value := os.Getenv("SPOTIFY_CLIENT_ID"); value != "" {
+		c.Spotify.ClientID = value
+	}
+	if value := os.Getenv("SPOTIFY_CLIENT_SECRET"); value != "" {
+		c.Spotify.ClientSecret = value
+	}
+	if value := os.Getenv("SPOTIFY_REDIRECT_URI"); value != "" {
+		c.Spotify.RedirectURI = value
+	}
+	if value := os.Getenv("SPOTIFY_USERNAME"); value != "" {
+		c.Spotify.Username = value
+	}
+	if value := os.Getenv("SPOTIFY_PLAYLIST_ID"); value != "" {
+		c.Spotify.PlaylistIDs = parseCommaSeparatedList(value)
+	}
+
+	// Plex configuration (only replace if values exist and are not empty)
+	if value := os.Getenv("PLEX_URL"); value != "" {
+		c.Plex.URL = value
+	}
+	if value := os.Getenv("PLEX_TOKEN"); value != "" {
+		c.Plex.Token = value
+	}
+	if value := os.Getenv("PLEX_LIBRARY_SECTION_ID"); value != "" {
+		if sectionID, err := parseLibrarySectionID(value); err == nil {
+			c.Plex.LibrarySectionID = sectionID
+		}
+	}
+	if value := os.Getenv("PLEX_SERVER_ID"); value != "" {
+		c.Plex.ServerID = value
 	}
 }
 
@@ -174,90 +207,47 @@ func parseLibrarySectionID(value string) (int, error) {
 
 // validate checks that all required configuration values are present
 func (c *Config) validate() error {
-	var errors []string
+	var missingFields []string
 
-	// Validate Spotify configuration
-	if err := c.validateSpotifyConfig(); err != nil {
-		errors = append(errors, err.Error())
-	}
-
-	// Validate Plex configuration
-	if err := c.validatePlexConfig(); err != nil {
-		errors = append(errors, err.Error())
-	}
-
-	// Validate playlist configuration
-	if err := c.validatePlaylistConfig(); err != nil {
-		errors = append(errors, err.Error())
-	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("configuration validation failed:\n%s", strings.Join(errors, "\n"))
-	}
-
-	return nil
-}
-
-// validateSpotifyConfig validates Spotify configuration
-func (c *Config) validateSpotifyConfig() error {
-	var errors []string
-
+	// Check Spotify configuration
 	if c.Spotify.ClientID == "" {
-		errors = append(errors, "SPOTIFY_CLIENT_ID is required (set via environment variable, .env file, or -SPOTIFY_CLIENT_ID flag)")
+		missingFields = append(missingFields, "SPOTIFY_CLIENT_ID")
 	}
 	if c.Spotify.ClientSecret == "" {
-		errors = append(errors, "SPOTIFY_CLIENT_SECRET is required (set via environment variable, .env file, or -SPOTIFY_CLIENT_SECRET flag)")
+		missingFields = append(missingFields, "SPOTIFY_CLIENT_SECRET")
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("Spotify configuration errors:\n%s", strings.Join(errors, "\n"))
-	}
-
-	return nil
-}
-
-// validatePlexConfig validates Plex configuration
-func (c *Config) validatePlexConfig() error {
-	var errors []string
-
+	// Check Plex configuration
 	if c.Plex.URL == "" {
-		errors = append(errors, "PLEX_URL is required (set via environment variable, .env file, or -PLEX_URL flag)")
+		missingFields = append(missingFields, "PLEX_URL")
 	}
 	if c.Plex.Token == "" {
-		errors = append(errors, "PLEX_TOKEN is required (set via environment variable, .env file, or -PLEX_TOKEN flag)")
+		missingFields = append(missingFields, "PLEX_TOKEN")
 	}
 	if c.Plex.LibrarySectionID == 0 {
-		errors = append(errors, "PLEX_LIBRARY_SECTION_ID is required (set via environment variable, .env file, or -PLEX_LIBRARY_SECTION_ID flag)")
+		missingFields = append(missingFields, "PLEX_LIBRARY_SECTION_ID")
 	}
 
-	if len(errors) > 0 {
-		return fmt.Errorf("Plex configuration errors:\n%s", strings.Join(errors, "\n"))
-	}
-
-	return nil
-}
-
-// validatePlaylistConfig validates that at least one playlist source is configured
-func (c *Config) validatePlaylistConfig() error {
-	// At least one of SPOTIFY_USERNAME or SPOTIFY_PLAYLIST_ID must be provided
+	// Check playlist configuration
 	if c.Spotify.Username == "" && len(c.Spotify.PlaylistIDs) == 0 {
-		return fmt.Errorf("playlist configuration error:\nEither SPOTIFY_USERNAME or SPOTIFY_PLAYLIST_ID must be provided (set via environment variable, .env file, or CLI flags)")
+		missingFields = append(missingFields, "SPOTIFY_USERNAME or SPOTIFY_PLAYLIST_ID")
+	}
+
+	if len(missingFields) > 0 {
+		return fmt.Errorf("missing required configuration values:\n%s\n\nSet these values via environment variables, .env file, or CLI flags", strings.Join(missingFields, "\n"))
 	}
 
 	return nil
 }
 
-// getEnv gets an environment variable with a fallback default value
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-// applyOverrides applies CLI flag overrides to the configuration
+// applyOverrides applies CLI flag overrides to the configuration (only if they exist)
 func (c *Config) applyOverrides(overrides map[string]string) {
 	for key, value := range overrides {
+		// Only apply if the value is not empty
+		if value == "" {
+			continue
+		}
+
 		switch key {
 		case "SPOTIFY_CLIENT_ID":
 			c.Spotify.ClientID = value

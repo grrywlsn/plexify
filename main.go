@@ -364,7 +364,7 @@ func parseFlags() map[string]string {
 	var spotifyClientID, spotifyClientSecret, spotifyRedirectURI, spotifyUsername, spotifyPlaylistID string
 	flag.StringVar(&spotifyClientID, "SPOTIFY_CLIENT_ID", "", "Spotify Client ID (overrides env var)")
 	flag.StringVar(&spotifyClientSecret, "SPOTIFY_CLIENT_SECRET", "", "Spotify Client Secret (overrides env var)")
-	flag.StringVar(&spotifyRedirectURI, "SPOTIFY_REDIRECT_URI", "", "Spotify Redirect URI (overrides env var)")
+	flag.StringVar(&spotifyRedirectURI, "SPOTIFY_REDIRECT_URI", "", "Spotify Redirect URI (optional, defaults to http://localhost:8080/callback, overrides env var)")
 	flag.StringVar(&spotifyUsername, "SPOTIFY_USERNAME", "", "Spotify username to fetch all public playlists (overrides env var)")
 	flag.StringVar(&spotifyPlaylistID, "SPOTIFY_PLAYLIST_ID", "", "Comma-separated list of Spotify playlist IDs (overrides env var)")
 

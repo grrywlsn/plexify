@@ -81,7 +81,6 @@ The variables for configuration are:
 # Spotify Configuration
 SPOTIFY_CLIENT_ID=your_spotify_client_id_here
 SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
-SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
 
 # Plex Configuration
 PLEX_URL=http://your_plex_server:32400
@@ -96,7 +95,17 @@ SPOTIFY_USERNAME=your_spotify_username_here
 SPOTIFY_PLAYLIST_ID=playlist_id_1,playlist_id_2,playlist_id_3
 ```
 
-These can be set either as environment variables, loaded from a `.env` file, or passed into the binary as flags like `plexify --SPOTIFY_USERNAME=myname`
+These can be set either as environment variables, loaded from a `.env` file, or passed in as flags, like so:
+
+```env
+./plexify \
+  -SPOTIFY_CLIENT_ID=your_spotify_client_id_here \
+  -SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here \
+  -SPOTIFY_PLAYLIST_ID=5a1G7EQcb8D5Tw5lzMQEmr \
+  -PLEX_URL=http://your_plex_server:32400 \
+  -PLEX_TOKEN=your_plex_token_here \
+  -PLEX_LIBRARY_SECTION_ID=6
+```
 
 ### 5. Finding playlists
 
@@ -208,68 +217,6 @@ The MusicBrainz ID can be used to:
 - Add to Lidarr to search for an exact match or fix the metadata assigned to your files
 
 **API Rate Limiting:** MusicBrainz has rate limiting in place. Plexify respects these limits and will make requests at a reasonable pace to avoid being blocked.
-
-## Configuration
-
-Plexify supports multiple ways to configure settings, with the following hierarchy (highest priority first):
-
-1. **CLI Flags** - Override everything else
-2. **Environment Variables** - Loaded from `.env` file
-3. **System Environment Variables** - Fallback if `.env` file doesn't exist
-
-### CLI Flags
-
-All environment variables can be set via CLI flags using the same names:
-
-```bash
-# Spotify configuration
-./plexify -SPOTIFY_CLIENT_ID=your_client_id -SPOTIFY_CLIENT_SECRET=your_secret
-./plexify -SPOTIFY_USERNAME=your_username
-./plexify -SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
-
-# Plex configuration
-./plexify -PLEX_URL=http://your-server:32400 -PLEX_TOKEN=your_token
-./plexify -PLEX_LIBRARY_SECTION_ID=6
-./plexify -PLEX_SERVER_ID=your_server_id
-
-# Legacy flags (still supported)
-./plexify -username your_username -playlists playlist_id1,playlist_id2
-```
-
-### Environment Variables
-
-Create a `.env` file in the same directory as the binary:
-
-```env
-# Spotify API credentials
-SPOTIFY_CLIENT_ID=your_client_id
-SPOTIFY_CLIENT_SECRET=your_client_secret
-SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
-SPOTIFY_USERNAME=your_spotify_username
-SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
-
-# Plex Configuration
-PLEX_URL=http://your_plex_server:32400
-PLEX_TOKEN=your_plex_token_here
-PLEX_LIBRARY_SECTION_ID=your_music_library_section_id
-PLEX_SERVER_ID=your_server_id
-```
-
-### Configuration Priority Example
-
-If you have:
-
-- `SPOTIFY_USERNAME=user1` in your `.env` file
-- `SPOTIFY_USERNAME=user2` as a system environment variable
-- `./plexify -SPOTIFY_USERNAME=user3`
-
-The final value will be `user3` (CLI flag takes precedence).
-
-## Matching Rules
-
-The matching rules used by plexify will evolve and improve as it is used on more playlists and libraries.
-
-The matching happens in a specific order, with each step trying different strategies to find the best match.
 
 ### Matching Order and Rules
 
