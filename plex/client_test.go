@@ -1147,6 +1147,30 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    "Song Title (Remastered)",
 				expected: "Song Title",
 			},
+			{
+				input:    "Here Comes the Rain Again - 2018 Remastered",
+				expected: "Here Comes the Rain Again",
+			},
+			{
+				input:    "Song Title - 2020 Remastered",
+				expected: "Song Title",
+			},
+			{
+				input:    "Song Title (2018 Remastered)",
+				expected: "Song Title",
+			},
+			{
+				input:    "Song Title (2020 Remastered)",
+				expected: "Song Title",
+			},
+			{
+				input:    "Song Title - 1995 Remastered",
+				expected: "Song Title",
+			},
+			{
+				input:    "Song Title (1995 Remastered)",
+				expected: "Song Title",
+			},
 			// Soundtrack suffix tests
 			{
 				input:    `Swan Song - From the Motion Picture "Alita: Battle Angel"`,
