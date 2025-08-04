@@ -1492,6 +1492,26 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 		}
 	}
 
+	// Handle year-based remastered patterns (e.g., " - 2018 Remastered", " (2018 Remastered)")
+	yearRemasteredPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\s*-\s*\d{4}\s+remastered\s*$`),
+		regexp.MustCompile(`(?i)\s*\(\s*\d{4}\s+remastered\s*\)\s*$`),
+	}
+
+	for _, pattern := range yearRemasteredPatterns {
+		if pattern.MatchString(s) {
+			// Find the position of the pattern
+			matches := pattern.FindStringIndex(s)
+			if len(matches) > 0 {
+				// Return the original string up to the pattern (preserving original case)
+				result := strings.TrimSpace(s[:matches[0]])
+				// Clean up trailing dashes and spaces
+				result = strings.TrimSpace(strings.TrimSuffix(result, "-"))
+				return result
+			}
+		}
+	}
+
 	// Handle special cases with quotes that need regex matching
 	// These patterns can have varying content inside quotes
 	soundtrackPatterns := []string{

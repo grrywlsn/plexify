@@ -306,6 +306,8 @@ The MusicBrainz ID can be used to:
 - `"Song Title (Bonus Track)"` → `"Song Title"`
 - `"Song Title (Remix)"` → `"Song Title"`
 - `"Song Title (Remastered)"` → `"Song Title"`
+- `"Song Title - 2018 Remastered"` → `"Song Title"`
+- `"Song Title (2018 Remastered)"` → `"Song Title"`
 - **Soundtrack suffixes:**
   - `"Song Title - From the Motion Picture "Very Famous Movie""` → `"Song Title"`
   - `"Song Title - From the Film "Very Famous Movie""` → `"Song Title"`
