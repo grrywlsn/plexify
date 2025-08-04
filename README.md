@@ -4,7 +4,7 @@ A tool to sync Spotify playlists to playlists on your Plex server.
 
 Can be run manually as a CLI, or scheduled as a cron task.
 
-You don't need an active Spotify account to use the tool, just a Spotify developer account which is free and easy to get. 
+You don't need an active Spotify subscription to use the tool, just a Spotify developer account which is free and easy to get. 
 
 > [!IMPORTANT]
 > You can sync any public playlists, even if they don't belong to your Spotify account. However, you cannot sync Spotify-managed playlists like the weekly charts.
