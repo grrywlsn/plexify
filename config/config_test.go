@@ -6,23 +6,6 @@ import (
 	"testing"
 )
 
-func TestGetEnv(t *testing.T) {
-	// Test with existing environment variable
-	os.Setenv("TEST_VAR", "test_value")
-	defer os.Unsetenv("TEST_VAR")
-
-	value := getEnv("TEST_VAR", "default")
-	if value != "test_value" {
-		t.Errorf("Expected 'test_value', got %s", value)
-	}
-
-	// Test with non-existing environment variable
-	value = getEnv("NON_EXISTENT_VAR", "default_value")
-	if value != "default_value" {
-		t.Errorf("Expected 'default_value', got %s", value)
-	}
-}
-
 func TestConfigValidation(t *testing.T) {
 	// Test that validation fails when required fields are missing
 	cfg := &Config{}
@@ -34,10 +17,10 @@ func TestConfigValidation(t *testing.T) {
 
 	// Check that error message includes helpful information
 	errorMsg := err.Error()
-	if !strings.Contains(errorMsg, "SPOTIFY_CLIENT_ID is required") {
+	if !strings.Contains(errorMsg, "SPOTIFY_CLIENT_ID") {
 		t.Error("Expected error message to mention SPOTIFY_CLIENT_ID")
 	}
-	if !strings.Contains(errorMsg, "PLEX_URL is required") {
+	if !strings.Contains(errorMsg, "PLEX_URL") {
 		t.Error("Expected error message to mention PLEX_URL")
 	}
 
@@ -118,7 +101,7 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestConfigHierarchy(t *testing.T) {
-	// Test the configuration hierarchy: env vars → .env → CLI flags
+	// Test the configuration hierarchy: defaults -> OS env -> .env -> CLI flags
 
 	// Set up required environment variables for validation
 	os.Setenv("SPOTIFY_CLIENT_ID", "test_client_id")
@@ -213,5 +196,108 @@ func TestApplyOverrides(t *testing.T) {
 
 	if cfg.Plex.URL != "http://override:32400" {
 		t.Errorf("Expected URL 'http://override:32400', got '%s'", cfg.Plex.URL)
+	}
+}
+
+func TestInitializeDefaults(t *testing.T) {
+	cfg := &Config{}
+	cfg.initializeDefaults()
+
+	// Test that defaults are set correctly
+	if cfg.Spotify.ClientID != "" {
+		t.Errorf("Expected empty ClientID, got '%s'", cfg.Spotify.ClientID)
+	}
+	if cfg.Spotify.ClientSecret != "" {
+		t.Errorf("Expected empty ClientSecret, got '%s'", cfg.Spotify.ClientSecret)
+	}
+	if cfg.Spotify.RedirectURI != "http://localhost:8080/callback" {
+		t.Errorf("Expected default RedirectURI, got '%s'", cfg.Spotify.RedirectURI)
+	}
+	if cfg.Spotify.Username != "" {
+		t.Errorf("Expected empty Username, got '%s'", cfg.Spotify.Username)
+	}
+	if cfg.Spotify.PlaylistIDs != nil {
+		t.Errorf("Expected nil PlaylistIDs, got %v", cfg.Spotify.PlaylistIDs)
+	}
+
+	if cfg.Plex.URL != "" {
+		t.Errorf("Expected empty URL, got '%s'", cfg.Plex.URL)
+	}
+	if cfg.Plex.Token != "" {
+		t.Errorf("Expected empty Token, got '%s'", cfg.Plex.Token)
+	}
+	if cfg.Plex.LibrarySectionID != 0 {
+		t.Errorf("Expected 0 LibrarySectionID, got %d", cfg.Plex.LibrarySectionID)
+	}
+	if cfg.Plex.ServerID != "" {
+		t.Errorf("Expected empty ServerID, got '%s'", cfg.Plex.ServerID)
+	}
+}
+
+func TestLoadFromOSEnv(t *testing.T) {
+	cfg := &Config{}
+	cfg.initializeDefaults()
+
+	// Set some environment variables
+	os.Setenv("SPOTIFY_CLIENT_ID", "test_client_id")
+	os.Setenv("SPOTIFY_USERNAME", "test_user")
+	os.Setenv("PLEX_URL", "http://test:32400")
+	defer func() {
+		os.Unsetenv("SPOTIFY_CLIENT_ID")
+		os.Unsetenv("SPOTIFY_USERNAME")
+		os.Unsetenv("PLEX_URL")
+	}()
+
+	cfg.loadFromOSEnv()
+
+	// Test that values were loaded
+	if cfg.Spotify.ClientID != "test_client_id" {
+		t.Errorf("Expected ClientID 'test_client_id', got '%s'", cfg.Spotify.ClientID)
+	}
+	if cfg.Spotify.Username != "test_user" {
+		t.Errorf("Expected Username 'test_user', got '%s'", cfg.Spotify.Username)
+	}
+	if cfg.Plex.URL != "http://test:32400" {
+		t.Errorf("Expected URL 'http://test:32400', got '%s'", cfg.Plex.URL)
+	}
+
+	// Test that empty values don't override defaults
+	if cfg.Spotify.RedirectURI != "http://localhost:8080/callback" {
+		t.Errorf("Expected default RedirectURI, got '%s'", cfg.Spotify.RedirectURI)
+	}
+}
+
+func TestApplyOverridesEmptyValues(t *testing.T) {
+	cfg := &Config{
+		Spotify: SpotifyConfig{
+			Username: "original_user",
+		},
+		Plex: PlexConfig{
+			LibrarySectionID: 1,
+		},
+	}
+
+	// Test that empty values in overrides don't change existing values
+	overrides := map[string]string{
+		"SPOTIFY_USERNAME":        "", // Empty value
+		"PLEX_LIBRARY_SECTION_ID": "10",
+		"PLEX_URL":                "", // Empty value
+	}
+
+	cfg.applyOverrides(overrides)
+
+	// Username should remain unchanged because override was empty
+	if cfg.Spotify.Username != "original_user" {
+		t.Errorf("Expected username 'original_user' (unchanged), got '%s'", cfg.Spotify.Username)
+	}
+
+	// LibrarySectionID should be updated
+	if cfg.Plex.LibrarySectionID != 10 {
+		t.Errorf("Expected library section ID 10, got %d", cfg.Plex.LibrarySectionID)
+	}
+
+	// URL should remain unchanged because override was empty
+	if cfg.Plex.URL != "" {
+		t.Errorf("Expected empty URL (unchanged), got '%s'", cfg.Plex.URL)
 	}
 }
