@@ -1448,6 +1448,7 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 		" - explicit",
 		" - bonus",
 		" - track",
+		" - remastered",
 		// Soundtrack suffixes
 		" - from the motion picture",
 		" - from the film",
@@ -1473,6 +1474,7 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 		" (explicit)",
 		" (bonus)",
 		" (track)",
+		" (remastered)",
 		// Soundtrack suffixes in parentheses (handled separately below)
 		" (from the soundtrack)",
 		" (soundtrack version)",
@@ -1496,9 +1498,11 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 		" - from the motion picture",
 		" - from the film",
 		" - from the movie",
+		" - love theme from",
 		"(from the motion picture",
 		"(from the film",
 		"(from the movie",
+		"(love theme from",
 	}
 
 	for _, pattern := range soundtrackPatterns {
