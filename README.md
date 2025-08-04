@@ -218,9 +218,9 @@ The MusicBrainz ID can be used to:
 
 **API Rate Limiting:** MusicBrainz has rate limiting in place. Plexify respects these limits and will make requests at a reasonable pace to avoid being blocked.
 
-### Matching Order and Rules
+## Matching Order and Rules
 
-#### 1. **Exact Title/Artist Match** (First Priority)
+### 1. **Exact Title/Artist Match** (First Priority)
 
 **When it applies:** All songs (highest priority for reliability)
 **What it does:** Searches using the exact title and artist from Spotify without any modifications
@@ -231,7 +231,7 @@ The MusicBrainz ID can be used to:
 - Falls back to artist-only search: `"Artist Name"`
 - Returns immediately if exact match is found (most reliable)
 
-#### 2. **Single Quote Handling** (Second Priority)
+### 2. **Single Quote Handling** (Second Priority)
 
 **When it applies:** Songs with apostrophes or single quotes in the title or artist name
 **What it does:** Tries different variations of the quote characters to handle encoding differences
@@ -244,7 +244,7 @@ The MusicBrainz ID can be used to:
 - Replace with different quote: `"Don't Stop Believin'"`
 - Expand contractions: `"Do not Stop Believin"`, `"Do not Stop Believin is"`
 
-#### 3. **Bracket Removal** (Third Priority)
+### 3. **Bracket Removal** (Third Priority)
 
 **When it applies:** Songs with text in parentheses, square brackets, or curly brackets
 **What it does:** Removes bracketed content and searches again
@@ -255,7 +255,7 @@ The MusicBrainz ID can be used to:
 - `"Song Title {Live}"` → `"Song Title"`
 - Cleans up extra spaces after removal
 
-#### 4. **Featuring Removal** (Fourth Priority)
+### 4. **Featuring Removal** (Fourth Priority)
 
 **When it applies:** Songs with featuring/feat/ft text in the title
 **What it does:** Removes featuring information and searches again
@@ -265,7 +265,7 @@ The MusicBrainz ID can be used to:
 - `"Song Title feat. Artist"` → `"Song Title"`
 - `"Song Title ft. Artist"` → `"Song Title"`
 
-#### 5. **Title Normalization** (Fifth Priority)
+### 5. **Title Normalization** (Fifth Priority)
 
 **When it applies:** Songs with dashes in the title that might be formatted differently in Plex
 **What it does:** Converts dash-separated titles to parentheses format for better matching
@@ -275,7 +275,7 @@ The MusicBrainz ID can be used to:
 - `"Song Title - Extended - Live"` → `"Song Title (Extended) (Live)"`
 - Handles multiple dashes by converting each to separate parentheses
 
-#### 6. **"With" Removal** (Sixth Priority)
+### 6. **"With" Removal** (Sixth Priority)
 
 **When it applies:** Songs with "with" in the title that might be formatted differently
 **What it does:** Removes "with" and any text after it from the title
@@ -285,7 +285,7 @@ The MusicBrainz ID can be used to:
 - `"With Artist - Song Title"` → `"Song Title"`
 - Cleans up trailing dashes and spaces after removal
 
-#### 7. **Common Suffixes Removal** (Seventh Priority)
+### 7. **Common Suffixes Removal** (Seventh Priority)
 
 **When it applies:** Songs with common suffixes that might not be present in Plex
 **What it does:** Removes common track suffixes and variations
@@ -309,7 +309,7 @@ The MusicBrainz ID can be used to:
   - `"Song Title - Movie Version"` → `"Song Title"`
 - And many more variations (clean, explicit, demo, instrumental, etc.)
 
-#### 8. **Full Library Search** (Eighth Priority - Fallback)
+### 8. **Full Library Search** (Eighth Priority - Fallback)
 
 **When it applies:** When all other matching strategies fail
 **What it does:** Searches through the entire music library to find potential matches
