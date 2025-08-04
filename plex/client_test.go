@@ -253,6 +253,99 @@ func TestNormalizeTitle(t *testing.T) {
 	}
 }
 
+func TestNormalizeAccents(t *testing.T) {
+	client := &Client{}
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"MÓNACO", "MONACO"},
+		{"Café", "Cafe"},
+		{"José", "Jose"},
+		{"François", "Francois"},
+		{"Björk", "Bjork"},
+		{"Mötley Crüe", "Motley Crue"},
+		{"Kraftwerk", "Kraftwerk"}, // No accents, should remain unchanged
+		{"The Beatles", "The Beatles"}, // No accents, should remain unchanged
+		{"Música", "Musica"},
+		{"Canción", "Cancion"},
+		{"Año", "Ano"},
+		{"Niño", "Nino"},
+		{"Señor", "Senor"},
+		{"Mañana", "Manana"},
+		{"Español", "Espanol"},
+		{"Português", "Portugues"},
+		{"Français", "Francais"},
+		{"Deutsch", "Deutsch"}, // No accents, should remain unchanged
+		{"Italiano", "Italiano"}, // No accents, should remain unchanged
+		{"Русский", "Русский"}, // Cyrillic, should remain unchanged
+		{"中文", "中文"}, // Chinese, should remain unchanged
+		{"日本語", "日本語"}, // Japanese, should remain unchanged
+	}
+
+	for _, test := range tests {
+		result := client.normalizeAccents(test.input)
+		if result != test.expected {
+			t.Errorf("normalizeAccents(%q) = %q, expected %q", test.input, result, test.expected)
+		}
+	}
+}
+
+func TestAccentMatchingScenario(t *testing.T) {
+	client := &Client{}
+
+	// Test the specific case mentioned: Spotify "MONACO" vs Plex "MÓNACO"
+	spotifyTitle := "MONACO"
+	plexTitle := "MÓNACO"
+	artist := "Bad Bunny"
+
+	t.Logf("Testing accent normalization for track matching:")
+	t.Logf("Spotify title: %s", spotifyTitle)
+	t.Logf("Plex title: %s", plexTitle)
+	t.Logf("Artist: %s", artist)
+
+	// Test accent normalization
+	normalizedSpotify := client.normalizeAccents(spotifyTitle)
+	normalizedPlex := client.normalizeAccents(plexTitle)
+
+	t.Logf("After accent normalization:")
+	t.Logf("Spotify: %s -> %s", spotifyTitle, normalizedSpotify)
+	t.Logf("Plex: %s -> %s", plexTitle, normalizedPlex)
+
+	// Test string similarity
+	originalSimilarity := client.calculateStringSimilarity(
+		strings.ToLower(spotifyTitle),
+		strings.ToLower(plexTitle),
+	)
+
+	accentSimilarity := client.calculateStringSimilarity(
+		strings.ToLower(normalizedSpotify),
+		strings.ToLower(normalizedPlex),
+	)
+
+	t.Logf("String similarity scores:")
+	t.Logf("Original: %.3f", originalSimilarity)
+	t.Logf("With accent normalization: %.3f", accentSimilarity)
+
+	// Verify that accent normalization improves matching
+	if accentSimilarity <= originalSimilarity {
+		t.Errorf("Accent normalization should improve matching: original=%.3f, normalized=%.3f", 
+			originalSimilarity, accentSimilarity)
+	}
+
+	// Test if they would match with the confidence threshold
+	confidence := (accentSimilarity * 0.7) + (1.0 * 0.3) // Assuming perfect artist match
+	t.Logf("Confidence score: %.3f", confidence)
+	
+	if confidence < 0.7 {
+		t.Errorf("Should match with confidence threshold: confidence=%.3f, threshold=0.7", confidence)
+	}
+
+	t.Logf("✅ Accent normalization successfully improves matching from %.3f to %.3f", 
+		originalSimilarity, accentSimilarity)
+}
+
 func TestSearchTrackWithSingleQuotes(t *testing.T) {
 	// Test song with single quote in title
 	song := spotify.Song{
