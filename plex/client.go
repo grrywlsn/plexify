@@ -267,6 +267,15 @@ func (c *Client) SearchTrack(ctx context.Context, song spotify.Song) (*PlexTrack
 			}
 			return nil, nil
 		}},
+		{"accent normalization", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
+			accentTitle := c.normalizeAccents(title)
+			accentArtist := c.normalizeAccents(artist)
+			if accentTitle != title || accentArtist != artist {
+				c.debugLog("🔍 SearchTrack: trying accent-normalized '%s' by '%s' for '%s' by '%s'", accentTitle, accentArtist, title, artist)
+				return c.trySearchVariations(ctx, accentTitle, accentArtist)
+			}
+			return nil, nil
+		}},
 		{"full library search", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
 			c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", title, artist)
 			return c.searchEntireLibrary(ctx, title, artist)
@@ -583,10 +592,19 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		punctuationTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(track.Artist)))
 		punctuationArtistSimilarity := c.calculateStringSimilarity(punctuationArtistLower, punctuationTrackArtistLower)
 
+		// Also try with accent normalization for artist matching
+		accentArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(artist)))
+		accentTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(track.Artist)))
+		accentArtistSimilarity := c.calculateStringSimilarity(accentArtistLower, accentTrackArtistLower)
+
 		// Use the better artist similarity
 		if punctuationArtistSimilarity > artistSimilarity {
 			c.debugLog("   Using normalized artist similarity: %.3f (was %.3f)", punctuationArtistSimilarity, artistSimilarity)
 			artistSimilarity = punctuationArtistSimilarity
+		}
+		if accentArtistSimilarity > artistSimilarity {
+			c.debugLog("   Using accent-normalized artist similarity: %.3f (was %.3f)", accentArtistSimilarity, artistSimilarity)
+			artistSimilarity = accentArtistSimilarity
 		}
 
 		// Also try with cleaned titles (without brackets) for better matching
@@ -637,7 +655,15 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		punctuationTitleSimilarity := c.calculateStringSimilarity(punctuationTitleLower, punctuationTrackTitleLower)
 		c.debugLog("   Punctuation-normalized title similarity: %.3f ('%s' vs '%s')", punctuationTitleSimilarity, punctuationTitleLower, punctuationTrackTitleLower)
 
-		// Use the best of the seven title similarities
+		// Also try with accent normalization for better matching
+		accentTitleLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(title)))
+		accentTrackTitleLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(track.Title)))
+
+		// Calculate similarity with accent normalization
+		accentTitleSimilarity := c.calculateStringSimilarity(accentTitleLower, accentTrackTitleLower)
+		c.debugLog("   Accent-normalized title similarity: %.3f ('%s' vs '%s')", accentTitleSimilarity, accentTitleLower, accentTrackTitleLower)
+
+		// Use the best of the eight title similarities
 		if cleanTitleSimilarity > titleSimilarity {
 			c.debugLog("   Using clean title similarity: %.3f (was %.3f)", cleanTitleSimilarity, titleSimilarity)
 			titleSimilarity = cleanTitleSimilarity
@@ -661,6 +687,10 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		if punctuationTitleSimilarity > titleSimilarity {
 			c.debugLog("   Using punctuation-normalized title similarity: %.3f (was %.3f)", punctuationTitleSimilarity, titleSimilarity)
 			titleSimilarity = punctuationTitleSimilarity
+		}
+		if accentTitleSimilarity > titleSimilarity {
+			c.debugLog("   Using accent-normalized title similarity: %.3f (was %.3f)", accentTitleSimilarity, titleSimilarity)
+			titleSimilarity = accentTitleSimilarity
 		}
 
 		// Combined score (title is more important than artist)
@@ -1268,7 +1298,13 @@ func (c *Client) calculateConfidence(song spotify.Song, track *PlexTrack, matchT
 			strings.ToLower(c.RemoveCommonSuffixes(track.Title)),
 		)
 
-		// Use the best of the six title similarities
+		// Also try with accent normalization for better matching
+		accentTitleSimilarity := c.calculateStringSimilarity(
+			strings.ToLower(c.normalizeAccents(song.Name)),
+			strings.ToLower(c.normalizeAccents(track.Title)),
+		)
+
+		// Use the best of the seven title similarities
 		if cleanTitleSimilarity > titleSimilarity {
 			titleSimilarity = cleanTitleSimilarity
 		}
@@ -1283,6 +1319,9 @@ func (c *Client) calculateConfidence(song spotify.Song, track *PlexTrack, matchT
 		}
 		if suffixTitleSimilarity > titleSimilarity {
 			titleSimilarity = suffixTitleSimilarity
+		}
+		if accentTitleSimilarity > titleSimilarity {
+			titleSimilarity = accentTitleSimilarity
 		}
 
 		return (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
@@ -1591,6 +1630,87 @@ func (c *Client) normalizePunctuation(s string) string {
 	s = strings.ReplaceAll(s, "\u2019", "'")  // Right single quotation mark to straight quote
 
 	return s
+}
+
+// normalizeAccents removes or normalizes accented characters to their base form
+func (c *Client) normalizeAccents(s string) string {
+	// Common accent mappings for music-related terms
+	accentMap := map[rune]rune{
+		// Spanish/Portuguese accents - lowercase
+		'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a', 'ā': 'a', 'ă': 'a', 'ą': 'a',
+		'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e', 'ĕ': 'e', 'ė': 'e', 'ę': 'e',
+		'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i', 'ī': 'i', 'ĭ': 'i', 'į': 'i',
+		'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o', 'ø': 'o', 'ō': 'o', 'ŏ': 'o', 'ő': 'o',
+		'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ū': 'u', 'ŭ': 'u', 'ů': 'u', 'ű': 'u',
+		'ý': 'y', 'ÿ': 'y', 'ŷ': 'y',
+		'ñ': 'n', 'ń': 'n', 'ņ': 'n', 'ň': 'n',
+		'ç': 'c', 'ć': 'c', 'ĉ': 'c', 'ċ': 'c', 'č': 'c',
+		'ś': 's', 'ŝ': 's', 'ş': 's', 'š': 's',
+		'ź': 'z', 'ż': 'z', 'ž': 'z',
+		'ł': 'l', 'ĺ': 'l', 'ļ': 'l', 'ľ': 'l',
+		'ř': 'r', 'ŕ': 'r', 'ŗ': 'r',
+		'ğ': 'g', 'ģ': 'g', 'ġ': 'g',
+		'ḫ': 'h', 'ĥ': 'h', 'ħ': 'h',
+		'ḏ': 'd', 'ď': 'd', 'đ': 'd',
+		'ṯ': 't', 'ť': 't', 'ţ': 't',
+		'ḅ': 'b', 'ḃ': 'b',
+		'ṗ': 'p', 'ṕ': 'p',
+		'ḳ': 'k', 'ḵ': 'k',
+		'ḷ': 'l', 'ḹ': 'l',
+		'ṁ': 'm', 'ṃ': 'm',
+		'ṅ': 'n', 'ṇ': 'n',
+		'ṡ': 's', 'ṣ': 's',
+		'ṫ': 't', 'ṭ': 't',
+		'ṻ': 'u', 'ṳ': 'u',
+		'ṽ': 'v', 'ṿ': 'v',
+		'ẁ': 'w', 'ẃ': 'w', 'ẅ': 'w', 'ẇ': 'w', 'ẉ': 'w',
+		'ẋ': 'x', 'ẍ': 'x',
+		'ỳ': 'y', 'ỹ': 'y', 'ỷ': 'y',
+		'ẑ': 'z', 'ẓ': 'z', 'ẕ': 'z',
+
+		// Spanish/Portuguese accents - uppercase
+		'Á': 'A', 'À': 'A', 'Â': 'A', 'Ã': 'A', 'Ä': 'A', 'Å': 'A', 'Ā': 'A', 'Ă': 'A', 'Ą': 'A',
+		'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E', 'Ē': 'E', 'Ĕ': 'E', 'Ė': 'E', 'Ę': 'E',
+		'Í': 'I', 'Ì': 'I', 'Î': 'I', 'Ï': 'I', 'Ī': 'I', 'Ĭ': 'I', 'Į': 'I',
+		'Ó': 'O', 'Ò': 'O', 'Ô': 'O', 'Õ': 'O', 'Ö': 'O', 'Ø': 'O', 'Ō': 'O', 'Ŏ': 'O', 'Ő': 'O',
+		'Ú': 'U', 'Ù': 'U', 'Û': 'U', 'Ü': 'U', 'Ū': 'U', 'Ŭ': 'U', 'Ů': 'U', 'Ű': 'U',
+		'Ý': 'Y', 'Ÿ': 'Y', 'Ŷ': 'Y',
+		'Ñ': 'N', 'Ń': 'N', 'Ņ': 'N', 'Ň': 'N',
+		'Ç': 'C', 'Ć': 'C', 'Ĉ': 'C', 'Ċ': 'C', 'Č': 'C',
+		'Ś': 'S', 'Ŝ': 'S', 'Ş': 'S', 'Š': 'S',
+		'Ź': 'Z', 'Ż': 'Z', 'Ž': 'Z',
+		'Ł': 'L', 'Ĺ': 'L', 'Ļ': 'L', 'Ľ': 'L',
+		'Ř': 'R', 'Ŕ': 'R', 'Ŗ': 'R',
+		'Ğ': 'G', 'Ģ': 'G', 'Ġ': 'G',
+		'Ḫ': 'H', 'Ĥ': 'H', 'Ħ': 'H',
+		'Ḏ': 'D', 'Ď': 'D', 'Đ': 'D',
+		'Ṯ': 'T', 'Ť': 'T', 'Ţ': 'T',
+		'Ḅ': 'B', 'Ḃ': 'B',
+		'Ṗ': 'P', 'Ṕ': 'P',
+		'Ḳ': 'K', 'Ḵ': 'K',
+		'Ḷ': 'L', 'Ḹ': 'L',
+		'Ṁ': 'M', 'Ṃ': 'M',
+		'Ṅ': 'N', 'Ṇ': 'N',
+		'Ṡ': 'S', 'Ṣ': 'S',
+		'Ṫ': 'T', 'Ṭ': 'T',
+		'Ṻ': 'U', 'Ṳ': 'U',
+		'Ṽ': 'V', 'Ṿ': 'V',
+		'Ẁ': 'W', 'Ẃ': 'W', 'Ẅ': 'W', 'Ẇ': 'W', 'Ẉ': 'W',
+		'Ẋ': 'X', 'Ẍ': 'X',
+		'Ỳ': 'Y', 'Ỹ': 'Y', 'Ỷ': 'Y',
+		'Ẑ': 'Z', 'Ẓ': 'Z', 'Ẕ': 'Z',
+	}
+
+	result := make([]rune, 0, len(s))
+	for _, r := range s {
+		if replacement, exists := accentMap[r]; exists {
+			result = append(result, replacement)
+		} else {
+			result = append(result, r)
+		}
+	}
+
+	return string(result)
 }
 
 // debugLog logs a message only if debug mode is enabled
