@@ -222,42 +222,42 @@ jobs:
         run: mkdir -p dist
 
       - name: Download Linux AMD64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plexify-linux-amd64
           path: dist/
         continue-on-error: true
 
       - name: Download Linux ARM64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plexify-linux-arm64
           path: dist/
         continue-on-error: true
 
       - name: Download macOS AMD64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plexify-darwin-amd64
           path: dist/
         continue-on-error: true
 
       - name: Download macOS ARM64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plexify-darwin-arm64
           path: dist/
         continue-on-error: true
 
       - name: Download Windows AMD64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plexify-windows-amd64.exe
           path: dist/
         continue-on-error: true
 
       - name: Download Windows ARM64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: plexify-windows-arm64.exe
           path: dist/
