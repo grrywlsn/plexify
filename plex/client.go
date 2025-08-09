@@ -245,6 +245,14 @@ func (c *Client) SearchTrack(ctx context.Context, song spotify.Song) (*PlexTrack
 			}
 			return nil, nil
 		}},
+		{"artist featuring removed", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
+			featuringArtist := c.removeFeaturing(artist)
+			if featuringArtist != artist {
+				c.debugLog("🔍 SearchTrack: trying artist featuring-removed '%s' by '%s' for '%s' by '%s'", title, featuringArtist, title, artist)
+				return c.trySearchVariations(ctx, title, featuringArtist)
+			}
+			return nil, nil
+		}},
 		{"normalized title", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
 			normalizedTitle := c.normalizeTitle(title)
 			if normalizedTitle != title && normalizedTitle != c.removeBrackets(title) && normalizedTitle != c.removeFeaturing(title) {
@@ -597,6 +605,11 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		accentTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(track.Artist)))
 		accentArtistSimilarity := c.calculateStringSimilarity(accentArtistLower, accentTrackArtistLower)
 
+		// Also try with featuring removed for artist matching
+		featuringArtistLower := strings.ToLower(strings.TrimSpace(c.removeFeaturing(artist)))
+		featuringTrackArtistLower := strings.ToLower(strings.TrimSpace(c.removeFeaturing(track.Artist)))
+		featuringArtistSimilarity := c.calculateStringSimilarity(featuringArtistLower, featuringTrackArtistLower)
+
 		// Use the better artist similarity
 		if punctuationArtistSimilarity > artistSimilarity {
 			c.debugLog("   Using normalized artist similarity: %.3f (was %.3f)", punctuationArtistSimilarity, artistSimilarity)
@@ -605,6 +618,10 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		if accentArtistSimilarity > artistSimilarity {
 			c.debugLog("   Using accent-normalized artist similarity: %.3f (was %.3f)", accentArtistSimilarity, artistSimilarity)
 			artistSimilarity = accentArtistSimilarity
+		}
+		if featuringArtistSimilarity > artistSimilarity {
+			c.debugLog("   Using featuring-removed artist similarity: %.3f (was %.3f)", featuringArtistSimilarity, artistSimilarity)
+			artistSimilarity = featuringArtistSimilarity
 		}
 
 		// Also try with cleaned titles (without brackets) for better matching
@@ -1304,6 +1321,12 @@ func (c *Client) calculateConfidence(song spotify.Song, track *PlexTrack, matchT
 			strings.ToLower(c.normalizeAccents(track.Title)),
 		)
 
+		// Also try with featuring removed for artist matching
+		featuringArtistSimilarity := c.calculateStringSimilarity(
+			strings.ToLower(c.removeFeaturing(song.Artist)),
+			strings.ToLower(c.removeFeaturing(track.Artist)),
+		)
+
 		// Use the best of the seven title similarities
 		if cleanTitleSimilarity > titleSimilarity {
 			titleSimilarity = cleanTitleSimilarity
@@ -1322,6 +1345,11 @@ func (c *Client) calculateConfidence(song spotify.Song, track *PlexTrack, matchT
 		}
 		if accentTitleSimilarity > titleSimilarity {
 			titleSimilarity = accentTitleSimilarity
+		}
+
+		// Use the better artist similarity
+		if featuringArtistSimilarity > artistSimilarity {
+			artistSimilarity = featuringArtistSimilarity
 		}
 
 		return (titleSimilarity * 0.7) + (artistSimilarity * 0.3)

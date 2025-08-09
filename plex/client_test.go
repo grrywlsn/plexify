@@ -3375,3 +3375,64 @@ func TestGetItRightRealWorldScenario(t *testing.T) {
 		}
 	}
 }
+
+func TestArtistFeaturingRemoval(t *testing.T) {
+	client := &Client{}
+	client.SetDebug(true)
+
+	// Test case: Spotify song "The Field (feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar)" by "Blood Orange"
+	// vs Plex track "The Field" by "Blood Orange feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar"
+	spotifySong := spotify.Song{
+		ID:       "test_the_field",
+		Name:     "The Field (feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar)",
+		Artist:   "Blood Orange",
+		Album:    "Test Album",
+		Duration: 240000,
+		URI:      "spotify:track:test_the_field",
+		ISRC:     "TEST22222222",
+	}
+
+	plexTracks := []PlexTrack{
+		{
+			ID:     "plex_the_field",
+			Title:  "The Field",
+			Artist: "Blood Orange feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar",
+			Album:  "Test Album",
+		},
+	}
+
+	t.Logf("Testing artist featuring removal:")
+	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Plex: '%s' by '%s'", plexTracks[0].Title, plexTracks[0].Artist)
+
+	// Test the removeFeaturing function on artist
+	cleanedArtist := client.removeFeaturing(plexTracks[0].Artist)
+	expectedArtist := "Blood Orange"
+	if cleanedArtist != expectedArtist {
+		t.Errorf("removeFeaturing(%q) = %q, expected %q", plexTracks[0].Artist, cleanedArtist, expectedArtist)
+	}
+
+	// Test the removeBrackets function on title (to remove featuring in parentheses)
+	cleanedTitle := client.removeBrackets(spotifySong.Name)
+	expectedTitle := "The Field"
+	if cleanedTitle != expectedTitle {
+		t.Errorf("removeBrackets(%q) = %q, expected %q", spotifySong.Name, cleanedTitle, expectedTitle)
+	}
+
+	// Test FindBestMatch
+	result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+
+	if result == nil {
+		t.Error("Expected FindBestMatch to find a match for 'The Field' by 'Blood Orange'")
+	} else {
+		t.Logf("✅ Found match: '%s' by '%s'", result.Title, result.Artist)
+	}
+
+	// Test that the match has high confidence
+	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	t.Logf("Match confidence: %.3f", confidence)
+
+	if confidence < 0.9 {
+		t.Errorf("Expected high confidence match (>= 0.9), got %.3f", confidence)
+	}
+}
