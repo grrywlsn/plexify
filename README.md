@@ -32,23 +32,43 @@ Download the latest release for your platform from [GitHub Releases](https://git
 **Linux (amd64):**
 
 ```bash
-wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-linux-amd64 -O plexify && chmod +x plexify
+wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-linux-amd64 \
+  -O plexify && chmod +x plexify
 ```
 
 **macOS (Intel):**
 
 ```bash
-wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-amd64 -O plexify && chmod +x plexify
+wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-amd64 \
+  -O plexify && chmod +x plexify
 ```
 
 **macOS (Apple Silicon):**
 
 ```bash
-wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-arm64 -O plexify && chmod +x plexify
+wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin-arm64 \
+  -O plexify && chmod +x plexify
 ```
 
 **Windows:**
+
 Download `plexify-windows-amd64.exe` from the [releases page](https://github.com/grrywlsn/plexify/releases) and rename to `plexify.exe`
+
+**Docker:**
+
+Start the container like the following:
+
+```bash
+docker run --rm ghcr.io/grrywlsn/plexify:latest -SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+```
+
+If you want to run the container with environment variables, do it the following way:
+
+```bash
+docker run --rm -e SPOTIFY_CLIENT_ID='your_spotify_client_id_here' ghcr.io/grrywlsn/plexify:latest
+```
+
+For available configuration options look under [4. Configuration](#4-configuration).
 
 ### 2. Spotify API Setup
 

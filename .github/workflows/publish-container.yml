@@ -2,15 +2,9 @@ name: Build and publish container
 
 on:
   push:
-    branches:
-      - '**' 
     tags: ["v*.*.*"]
   pull_request:
     branches: ["main"]
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   publish:
