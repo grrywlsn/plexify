@@ -27,6 +27,7 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
           tags: plexify:test
           build-args: |
             VERSION=test-build
