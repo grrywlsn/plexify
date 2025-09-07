@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.23-alpine3.22 AS builder
+FROM golang:1.25-alpine3.22 AS builder
 
 # Install git and ca-certificates (needed for HTTPS requests)
 RUN apk add --no-cache git ca-certificates tzdata
