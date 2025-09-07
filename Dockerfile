@@ -45,7 +45,7 @@ RUN chown -R plexify:plexify /app
 USER plexify
 
 LABEL org.opencontainers.image.source="https://github.com/grrywlsn/plexify" \
-    org.opencontainers.image.description="Sync Spotify playlists to Plex" \
+    org.opencontainers.image.description="Sync Spotify playlists to Plex"
 
 # Set the binary as the entrypoint
 ENTRYPOINT ["/app/plexify"]
