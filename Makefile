@@ -69,7 +69,7 @@ run-playlist: build ## Run with a specific playlist ID (set PLAYLIST_ID=your_pla
 		exit 1; \
 	fi
 	@echo "Running $(BINARY_NAME) with playlist ID: $(PLAYLIST_ID)"
-	./$(BUILD_DIR)/$(BINARY_NAME) -playlists $(PLAYLIST_ID)
+	./$(BUILD_DIR)/$(BINARY_NAME) -SPOTIFY_PLAYLIST_ID $(PLAYLIST_ID)
 
 run-username: build ## Run with a specific username (set USERNAME=your_username)
 	@if [ -z "$(USERNAME)" ]; then \
@@ -77,7 +77,7 @@ run-username: build ## Run with a specific username (set USERNAME=your_username)
 		exit 1; \
 	fi
 	@echo "Running $(BINARY_NAME) with username: $(USERNAME)"
-	./$(BUILD_DIR)/$(BINARY_NAME) -username $(USERNAME)
+	./$(BUILD_DIR)/$(BINARY_NAME) -SPOTIFY_USERNAME $(USERNAME)
 
 # Development targets
 deps: ## Install and tidy dependencies
