@@ -385,8 +385,8 @@ jobs:
           ### Downloads
           
           **Docker:**
-          - \`docker pull ghcr.io/${{ github.actor }}/plexify:$VERSION\`
-          - \`docker pull ghcr.io/${{ github.actor }}/plexify:latest\`
+          - \`docker pull ghcr.io/${{ github.repository }}:$VERSION\`
+          - \`docker pull ghcr.io/${{ github.repository }}:latest\`
           
           **Linux:**
           - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-linux-amd64)
@@ -405,11 +405,11 @@ jobs:
           **Docker (Recommended):**
           \`\`\`bash
           # Pull and run the latest version
-          docker run --rm ghcr.io/${{ github.actor }}/plexify:latest --help
+          docker run --rm ghcr.io/${{ github.repository }}:latest --help
           
           # Or pull a specific version
-          docker pull ghcr.io/${{ github.actor }}/plexify:$VERSION
-          docker run --rm ghcr.io/${{ github.actor }}/plexify:$VERSION --help
+          docker pull ghcr.io/${{ github.repository }}:$VERSION
+          docker run --rm ghcr.io/${{ github.repository }}:$VERSION --help
           \`\`\`
           
           **Binary Installation:**
@@ -499,13 +499,17 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.actor }}/plexify
+          images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ needs.get-version.outputs.version }}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64

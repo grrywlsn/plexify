@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine3.22 AS builder
+FROM golang:1.23-alpine3.22.1 AS builder
 
 # Install git and ca-certificates (needed for HTTPS requests)
 RUN apk add --no-cache git ca-certificates tzdata
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     main.go
 
 # Final stage
-FROM alpine:3.22
+FROM alpine:3.22.1
 
 # Install ca-certificates for HTTPS requests
 RUN apk --no-cache add ca-certificates tzdata
@@ -44,8 +44,8 @@ RUN chown -R plexify:plexify /app
 # Switch to non-root user
 USER plexify
 
-LABEL org.opencontainers.image.source="https://github.com/grrywlsn/plexify" \
-    org.opencontainers.image.description="Sync Spotify playlists to Plex"
+# Expose port (if needed for future web interface)
+EXPOSE 8080
 
 # Set the binary as the entrypoint
 ENTRYPOINT ["/app/plexify"]

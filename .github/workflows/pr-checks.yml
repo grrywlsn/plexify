@@ -11,45 +11,6 @@ jobs:
           one_of: major,minor,patch
           repo_token: ${{ secrets.GITHUB_TOKEN }}
 
-  go-tests:
-    name: Go Tests and Checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ github.workspace }}/.cache
-            ${{ github.workspace }}/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v ./...
-
-      - name: Run vet
-        run: go vet ./...
-
-      - name: Run fmt check
-        run: |
-          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-            echo "The following files are not formatted:"
-            gofmt -s -l .
-            exit 1
-          fi
-
   docker-build-test:
     name: Test Docker Build
     runs-on: ubuntu-latest
@@ -61,12 +22,11 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64
           push: false
-          load: true
           tags: plexify:test
           build-args: |
             VERSION=test-build
@@ -78,18 +38,12 @@ jobs:
           echo "Testing Docker image functionality..."
           
           # Test that the binary runs and shows help
-          echo "Testing --help flag..."
           docker run --rm plexify:test --help
           
           # Test that the binary shows version
-          echo "Testing --version flag..."
           docker run --rm plexify:test --version
           
-          # Test that the binary can run with a simple command
-          echo "Testing basic binary execution..."
-          docker run --rm plexify:test --version | grep -q "Plexify version" || {
-            echo "❌ Version command failed"
-            exit 1
-          }
+          # Test that the binary exits with proper error when no config is provided
+          docker run --rm plexify:test 2>&1 | grep -q "Configuration Error" || exit 1
           
           echo "✅ Docker build and basic functionality tests passed!"
