@@ -11,6 +11,45 @@ jobs:
           one_of: major,minor,patch
           repo_token: ${{ secrets.GITHUB_TOKEN }}
 
+  go-tests:
+    name: Go Tests and Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.23'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/.cache
+            ${{ github.workspace }}/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Run fmt check
+        run: |
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "The following files are not formatted:"
+            gofmt -s -l .
+            exit 1
+          fi
+
   docker-build-test:
     name: Test Docker Build
     runs-on: ubuntu-latest
