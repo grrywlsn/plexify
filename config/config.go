@@ -21,7 +21,7 @@ type SpotifyConfig struct {
 	ClientSecret string
 	RedirectURI  string
 	Username     string   // Spotify username to get all public playlists
-	PlaylistIDs  []string // Spotify playlist IDs from comma-separated list (legacy)
+	PlaylistIDs  []string // Spotify playlist IDs from comma-separated list
 }
 
 // PlexConfig holds Plex server configuration

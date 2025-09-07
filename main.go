@@ -343,9 +343,6 @@ func (app *Application) printNoPlaylistsMessage() {
 	fmt.Println("  ./plexify -SPOTIFY_USERNAME your_spotify_username")
 	fmt.Println("  ./plexify -SPOTIFY_PLAYLIST_ID 37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N")
 	fmt.Println("  ./plexify --DEBUG -SPOTIFY_PLAYLIST_ID 37i9dQZF1DXcBWIGoYBM5M  # with debug output")
-	fmt.Println("\nLegacy flags (still supported):")
-	fmt.Println("  ./plexify -username your_spotify_username")
-	fmt.Println("  ./plexify -playlists 37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N")
 }
 
 // Global debug flag
@@ -374,12 +371,6 @@ func parseFlags() map[string]string {
 	flag.StringVar(&plexToken, "PLEX_TOKEN", "", "Plex authentication token (overrides env var)")
 	flag.StringVar(&plexLibrarySectionID, "PLEX_LIBRARY_SECTION_ID", "", "Plex library section ID (overrides env var)")
 	flag.StringVar(&plexServerID, "PLEX_SERVER_ID", "", "Plex server ID (overrides env var)")
-
-	// Legacy flags for backward compatibility
-	var playlistIDs string
-	flag.StringVar(&playlistIDs, "playlists", "", "Comma-separated list of Spotify playlist IDs (legacy, use SPOTIFY_PLAYLIST_ID instead)")
-	var legacyUsername string
-	flag.StringVar(&legacyUsername, "username", "", "Spotify username (legacy, use SPOTIFY_USERNAME instead)")
 
 	// Other flags
 	flag.BoolVar(&debugMode, "DEBUG", false, "Enable debug output (detailed matching and similarity information)")
@@ -423,14 +414,6 @@ func parseFlags() map[string]string {
 	}
 	if plexServerID != "" {
 		overrides["PLEX_SERVER_ID"] = plexServerID
-	}
-
-	// Handle legacy flags
-	if playlistIDs != "" {
-		overrides["SPOTIFY_PLAYLIST_ID"] = playlistIDs
-	}
-	if legacyUsername != "" {
-		overrides["SPOTIFY_USERNAME"] = legacyUsername
 	}
 
 	return overrides
