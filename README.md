@@ -57,6 +57,22 @@ Download `plexify-windows-amd64.exe` from the [releases page](https://github.com
 3. Note your `Client ID` and `Client Secret`
 4. Add `http://localhost:8080/callback` to your redirect URIs
 
+**Docker:**
+
+Start the container like the following:
+
+```bash
+docker run --rm ghcr.io/grrywlsn/plexify:latest -SPOTIFY_CLIENT_ID=your_spotify_client_id_here
+```
+
+If you want to run the container with environment variables, do it the following way:
+
+```bash
+docker run --rm -e SPOTIFY_CLIENT_ID='your_spotify_client_id_here' ghcr.io/grrywlsn/plexify:latest
+```
+
+For available configuration options look under [4. Configuration](#4-configuration).
+
 ### 3. Plex Setup
 
 1. **Get your Plex Token**:
