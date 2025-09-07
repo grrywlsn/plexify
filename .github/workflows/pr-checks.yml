@@ -84,6 +84,22 @@ jobs:
           docker run --rm plexify:test --version
           
           # Test that the binary exits with proper error when no config is provided
-          docker run --rm plexify:test 2>&1 | grep -q "Configuration Error" || exit 1
+          # The binary should show help and version, then configuration error, then exit with code 1
+          output=$(docker run --rm plexify:test 2>&1 || true)
+          if echo "$output" | grep -q "Configuration Error"; then
+            echo "✅ Binary correctly shows configuration error when no config provided"
+          else
+            echo "❌ Expected 'Configuration Error' in output, but got:"
+            echo "$output"
+            exit 1
+          fi
+          
+          # Test that the binary exits with error code 1
+          if docker run --rm plexify:test >/dev/null 2>&1; then
+            echo "❌ Expected binary to exit with error code, but it succeeded"
+            exit 1
+          else
+            echo "✅ Binary correctly exits with error code when no config provided"
+          fi
           
           echo "✅ Docker build and basic functionality tests passed!"
