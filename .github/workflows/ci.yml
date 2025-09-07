@@ -424,6 +424,10 @@ jobs:
           
           ### Downloads
           
+          **Docker:**
+          - \`docker pull ghcr.io/${{ github.repository }}:$VERSION\`
+          - \`docker pull ghcr.io/${{ github.repository }}:latest\`
+          
           **Linux:**
           - [plexify-linux-amd64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-linux-amd64)
           - [plexify-linux-arm64](https://github.com/${{ github.repository }}/releases/download/$VERSION/plexify-linux-arm64)
@@ -438,6 +442,17 @@ jobs:
           
           ### Installation
           
+          **Docker (Recommended):**
+          \`\`\`bash
+          # Pull and run the latest version
+          docker run --rm ghcr.io/${{ github.repository }}:latest --help
+          
+          # Or pull a specific version
+          docker pull ghcr.io/${{ github.repository }}:$VERSION
+          docker run --rm ghcr.io/${{ github.repository }}:$VERSION --help
+          \`\`\`
+          
+          **Binary Installation:**
           Download the appropriate binary for your platform and make it executable:
           
           \`\`\`bash
@@ -496,4 +511,52 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: contains(github.event.pull_request.labels.*.name, 'major') 
+        if: contains(github.event.pull_request.labels.*.name, 'major')
+
+  docker-build-and-push:
+    name: Build and Push Docker Image
+    needs: [release, get-version]
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true && (contains(github.event.pull_request.labels.*.name, 'patch') || contains(github.event.pull_request.labels.*.name, 'minor') || contains(github.event.pull_request.labels.*.name, 'major'))
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.get-version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max 
