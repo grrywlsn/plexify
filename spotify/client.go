@@ -37,6 +37,7 @@ type PlaylistInfo struct {
 	Owner       string
 	TrackCount  int
 	Public      bool
+	ArtworkURL  string // URL of the playlist's custom artwork (if any)
 }
 
 // NewClient creates a new Spotify client with authentication
@@ -87,6 +88,13 @@ func (c *Client) GetUserPublicPlaylists(username string) ([]PlaylistInfo, error)
 	for {
 		for _, playlist := range userPlaylists.Playlists {
 			if playlist.IsPublic {
+				// Extract artwork URL if available
+				artworkURL := ""
+				if len(playlist.Images) > 0 {
+					// Use the first (usually largest) image
+					artworkURL = playlist.Images[0].URL
+				}
+
 				playlistInfo := PlaylistInfo{
 					ID:          string(playlist.ID),
 					Name:        playlist.Name,
@@ -94,6 +102,7 @@ func (c *Client) GetUserPublicPlaylists(username string) ([]PlaylistInfo, error)
 					Owner:       playlist.Owner.DisplayName,
 					TrackCount:  int(playlist.Tracks.Total),
 					Public:      playlist.IsPublic,
+					ArtworkURL:  artworkURL,
 				}
 				playlists = append(playlists, playlistInfo)
 			}
@@ -172,7 +181,7 @@ func (c *Client) convertTrackToSong(track spotify.FullTrack) Song {
 }
 
 // GetPlaylistInfo returns basic information about a playlist
-func (c *Client) GetPlaylistInfo(playlistID string) (*spotify.FullPlaylist, error) {
+func (c *Client) GetPlaylistInfo(playlistID string) (*PlaylistInfo, error) {
 	ctx := context.Background()
 
 	playlist, err := c.client.GetPlaylist(ctx, spotify.ID(playlistID))
@@ -180,7 +189,24 @@ func (c *Client) GetPlaylistInfo(playlistID string) (*spotify.FullPlaylist, erro
 		return nil, fmt.Errorf("failed to get playlist info: %w", err)
 	}
 
-	return playlist, nil
+	// Extract artwork URL if available
+	artworkURL := ""
+	if len(playlist.Images) > 0 {
+		// Use the first (usually largest) image
+		artworkURL = playlist.Images[0].URL
+	}
+
+	playlistInfo := &PlaylistInfo{
+		ID:          string(playlist.ID),
+		Name:        playlist.Name,
+		Description: playlist.Description,
+		Owner:       playlist.Owner.DisplayName,
+		TrackCount:  int(playlist.Tracks.Total),
+		Public:      playlist.IsPublic,
+		ArtworkURL:  artworkURL,
+	}
+
+	return playlistInfo, nil
 }
 
 // PopulateMusicBrainzIDs populates MusicBrainz IDs for songs using ISRC or artist/title search

@@ -12,9 +12,11 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/LukeHagar/plexgo"
 	"github.com/garry/plexify/config"
 	"github.com/garry/plexify/spotify"
 )
@@ -46,12 +48,13 @@ const (
 
 // Client wraps the Plex API client
 type Client struct {
-	baseURL    string
-	token      string
-	sectionID  int
-	serverID   string
-	httpClient *http.Client
-	debug      bool
+	baseURL      string
+	token        string
+	sectionID    int
+	serverID     string
+	httpClient   *http.Client
+	debug        bool
+	plexgoClient *plexgo.PlexAPI // Add plexgo SDK client
 }
 
 // PlexTrack represents a track from Plex
@@ -113,13 +116,29 @@ type MatchResult struct {
 
 // NewClient creates a new Plex client
 func NewClient(cfg *config.Config) *Client {
+	// Create HTTP client with TLS verification disabled for plexgo
+	httpClient := &http.Client{
+		Timeout: DefaultHTTPTimeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	// Initialize plexgo SDK client with custom HTTP client
+	plexgoClient := plexgo.New(
+		plexgo.WithSecurity(cfg.Plex.Token),
+		plexgo.WithServerURL(cfg.Plex.URL),
+		plexgo.WithClient(httpClient),
+	)
+
 	return &Client{
-		baseURL:    cfg.Plex.URL,
-		token:      cfg.Plex.Token,
-		sectionID:  cfg.Plex.LibrarySectionID,
-		serverID:   cfg.Plex.ServerID,
-		httpClient: &http.Client{Timeout: DefaultHTTPTimeout},
-		debug:      false,
+		baseURL:      cfg.Plex.URL,
+		token:        cfg.Plex.Token,
+		sectionID:    cfg.Plex.LibrarySectionID,
+		serverID:     cfg.Plex.ServerID,
+		httpClient:   &http.Client{Timeout: DefaultHTTPTimeout},
+		debug:        false,
+		plexgoClient: plexgoClient,
 	}
 }
 
@@ -133,13 +152,21 @@ func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
 		}
 	}
 
+	// Initialize plexgo SDK client with the same HTTP client configuration
+	plexgoClient := plexgo.New(
+		plexgo.WithSecurity(cfg.Plex.Token),
+		plexgo.WithServerURL(cfg.Plex.URL),
+		plexgo.WithClient(httpClient),
+	)
+
 	return &Client{
-		baseURL:    cfg.Plex.URL,
-		token:      cfg.Plex.Token,
-		sectionID:  cfg.Plex.LibrarySectionID,
-		serverID:   cfg.Plex.ServerID,
-		httpClient: httpClient,
-		debug:      false,
+		baseURL:      cfg.Plex.URL,
+		token:        cfg.Plex.Token,
+		sectionID:    cfg.Plex.LibrarySectionID,
+		serverID:     cfg.Plex.ServerID,
+		httpClient:   httpClient,
+		debug:        false,
+		plexgoClient: plexgoClient,
 	}
 }
 
@@ -1165,8 +1192,29 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 	return nil
 }
 
+// SetPlaylistPosterUsingPlexgo uses the plexgo SDK to set playlist poster
+func (c *Client) SetPlaylistPosterUsingPlexgo(ctx context.Context, playlistID, artworkURL string) error {
+	if artworkURL == "" {
+		return nil // No artwork to set
+	}
+
+	// Convert playlist ID to int64 (plexgo expects int64 for ratingKey)
+	ratingKey, err := strconv.ParseInt(playlistID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to convert playlist ID to int64: %w", err)
+	}
+
+	// Use plexgo SDK's PostMediaPoster function
+	_, err = c.plexgoClient.Library.PostMediaPoster(ctx, ratingKey, &artworkURL, nil)
+	if err != nil {
+		return fmt.Errorf("plexgo SDK failed to set poster: %w", err)
+	}
+
+	return nil
+}
+
 // MatchSpotifyPlaylist matches Spotify songs to Plex tracks and adds them to an existing playlist if mapped
-func (c *Client) MatchSpotifyPlaylist(ctx context.Context, songs []spotify.Song, playlistName, description string, spotifyPlaylistID string) ([]MatchResult, *PlexPlaylist, error) {
+func (c *Client) MatchSpotifyPlaylist(ctx context.Context, songs []spotify.Song, playlistName, description string, spotifyPlaylistID string, artworkURL string) ([]MatchResult, *PlexPlaylist, error) {
 	log.Printf("Starting sequential matching of %d Spotify songs to Plex tracks", len(songs))
 
 	// Process songs sequentially
@@ -1266,6 +1314,17 @@ func (c *Client) MatchSpotifyPlaylist(ctx context.Context, songs []spotify.Song,
 		}
 
 		log.Printf("✅ Successfully added %d tracks to playlist", len(matchedTrackIDs))
+
+		// Set playlist artwork using plexgo SDK
+		if artworkURL != "" {
+			log.Printf("🎨 Setting playlist artwork...")
+			
+			if err := c.SetPlaylistPosterUsingPlexgo(ctx, playlist.ID, artworkURL); err != nil {
+				log.Printf("⚠️  Failed to set playlist artwork: %v", err)
+			} else {
+				log.Printf("✅ Successfully set playlist artwork!")
+			}
+		}
 	} else {
 		log.Printf("No tracks matched, skipping playlist creation")
 	}
