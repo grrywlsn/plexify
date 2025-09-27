@@ -38,6 +38,7 @@ type PlaylistMeta struct {
 	ID          string
 	Name        string
 	Description string
+	ArtworkURL  string // URL of the playlist's custom artwork (if any)
 }
 
 // Application represents the main application state
@@ -126,6 +127,7 @@ func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 				ID:          pl.ID,
 				Name:        pl.Name,
 				Description: pl.Description,
+				ArtworkURL:  pl.ArtworkURL,
 			})
 		}
 		fmt.Printf("🎵 Processing %d public Spotify playlist(s) for user %s...\n\n", len(playlistMetas), app.config.Spotify.Username)
@@ -141,6 +143,7 @@ func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 				ID:          playlistID,
 				Name:        playlistInfo.Name,
 				Description: playlistInfo.Description,
+				ArtworkURL:  playlistInfo.ArtworkURL,
 			})
 		}
 		fmt.Printf("🎵 Processing %d Spotify playlist(s)...\n\n", len(playlistMetas))
@@ -187,7 +190,7 @@ func (app *Application) processPlaylist(ctx context.Context, meta PlaylistMeta, 
 	fmt.Println("MATCHING SONGS TO PLEX LIBRARY")
 	fmt.Println(strings.Repeat(separatorLine, separatorLength))
 
-	matchResults, playlist, err := app.plexClient.MatchSpotifyPlaylist(ctx, songs, meta.Name, meta.Description, meta.ID)
+	matchResults, playlist, err := app.plexClient.MatchSpotifyPlaylist(ctx, songs, meta.Name, meta.Description, meta.ID, meta.ArtworkURL)
 	if err != nil {
 		return fmt.Errorf("failed to match songs to Plex: %w", err)
 	}
