@@ -1318,7 +1318,7 @@ func (c *Client) MatchSpotifyPlaylist(ctx context.Context, songs []spotify.Song,
 		// Set playlist artwork using plexgo SDK
 		if artworkURL != "" {
 			log.Printf("🎨 Setting playlist artwork...")
-			
+
 			if err := c.SetPlaylistPosterUsingPlexgo(ctx, playlist.ID, artworkURL); err != nil {
 				log.Printf("⚠️  Failed to set playlist artwork: %v", err)
 			} else {
