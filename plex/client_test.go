@@ -1309,6 +1309,43 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    `Song Title (Love Theme from "Movie Name")`,
 				expected: "Song Title",
 			},
+			// Streaming service series tests
+			{
+				input:    `In The Dark - From the Netflix Series "Nobody Wants This" Season 2`,
+				expected: "In The Dark",
+			},
+			{
+				input:    `Theme Song - From the Netflix Series "Stranger Things"`,
+				expected: "Theme Song",
+			},
+			{
+				input:    `End Credits - From the Hulu Series "The Handmaid's Tale" Season 3`,
+				expected: "End Credits",
+			},
+			{
+				input:    `Main Theme - From the Prime Video Series "The Boys"`,
+				expected: "Main Theme",
+			},
+			{
+				input:    `Soundtrack - From the Apple TV Series "Ted Lasso"`,
+				expected: "Soundtrack",
+			},
+			{
+				input:    `Song Title - From the Disney Series "The Mandalorian"`,
+				expected: "Song Title",
+			},
+			{
+				input:    `Track - From the HBO Series "Game of Thrones" Season 8`,
+				expected: "Track",
+			},
+			{
+				input:    `Music - from the netflix show "Bridgerton"`,
+				expected: "Music",
+			},
+			{
+				input:    `Song Title (From the Netflix Series "Wednesday")`,
+				expected: "Song Title",
+			},
 			{
 				input:    "Song Title",
 				expected: "Song Title",
