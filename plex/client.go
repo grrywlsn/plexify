@@ -1638,6 +1638,27 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 		}
 	}
 
+	// Handle streaming service series patterns (Netflix, Hulu, Prime Video, etc.)
+	// Example: " - From the Netflix Series "Show Name" Season X"
+	streamingSeriesPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\s*-\s*from\s+the\s+(netflix|hulu|prime video|apple tv|disney|paramount|hbo)\s+(series|show)\s+.*$`),
+		regexp.MustCompile(`(?i)\s*\(\s*from\s+the\s+(netflix|hulu|prime video|apple tv|disney|paramount|hbo)\s+(series|show)\s+.*\)\s*$`),
+	}
+
+	for _, pattern := range streamingSeriesPatterns {
+		if pattern.MatchString(s) {
+			// Find the position of the pattern
+			matches := pattern.FindStringIndex(s)
+			if len(matches) > 0 {
+				// Return the original string up to the pattern (preserving original case)
+				result := strings.TrimSpace(s[:matches[0]])
+				// Clean up trailing dashes and spaces
+				result = strings.TrimSpace(strings.TrimSuffix(result, "-"))
+				return result
+			}
+		}
+	}
+
 	// Handle special cases with quotes that need regex matching
 	// These patterns can have varying content inside quotes
 	soundtrackPatterns := []string{
