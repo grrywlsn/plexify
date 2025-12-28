@@ -173,6 +173,11 @@ func (app *Application) processPlaylists(ctx context.Context, playlistMetas []Pl
 
 // processPlaylist processes a single playlist
 func (app *Application) processPlaylist(ctx context.Context, meta PlaylistMeta, index, total int) error {
+	// Refresh Spotify token before each playlist to prevent expiration mid-run
+	if err := app.spotifyClient.RefreshToken(); err != nil {
+		return fmt.Errorf("failed to refresh Spotify token: %w", err)
+	}
+
 	fmt.Printf("📋 Playlist %d/%d: %s\n", index, total, meta.ID)
 	fmt.Println(strings.Repeat(separatorLine, separatorLength))
 
