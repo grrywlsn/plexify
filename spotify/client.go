@@ -15,6 +15,7 @@ import (
 type Client struct {
 	client *spotify.Client
 	config *config.Config
+	auth   *spotifyauth.Authenticator
 }
 
 // Song represents a track from a Spotify playlist
@@ -69,7 +70,25 @@ func NewClient(cfg *config.Config) (*Client, error) {
 	return &Client{
 		client: client,
 		config: cfg,
+		auth:   auth,
 	}, nil
+}
+
+// RefreshToken obtains a fresh token from Spotify and updates the client
+func (c *Client) RefreshToken() error {
+	ctx := context.Background()
+
+	// Get a new token using client credentials flow
+	token, err := c.auth.Exchange(ctx, "", oauth2.SetAuthURLParam("grant_type", "client_credentials"))
+	if err != nil {
+		return fmt.Errorf("failed to refresh token: %w", err)
+	}
+
+	// Create new HTTP client with fresh token and update the Spotify client
+	httpClient := spotifyauth.New().Client(ctx, token)
+	c.client = spotify.New(httpClient)
+
+	return nil
 }
 
 // GetUserPublicPlaylists fetches all public playlists for a Spotify user
