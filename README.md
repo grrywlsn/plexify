@@ -109,11 +109,15 @@ PLEX_TOKEN=your_plex_token_here
 PLEX_LIBRARY_SECTION_ID=your_music_library_section_id
 
 # Playlist Configuration
+# You can use either or both of these options:
+
 # Option 1: Set SPOTIFY_USERNAME to fetch all public playlists for a user
 SPOTIFY_USERNAME=your_spotify_username_here
 
 # Option 2: Comma-separated list of specific Spotify playlist IDs
 SPOTIFY_PLAYLIST_ID=playlist_id_1,playlist_id_2,playlist_id_3
+
+# Note: If both are set, playlists will be combined and deduplicated
 
 # Optional: Comma-separated list of playlist IDs to exclude from processing
 # This works with both SPOTIFY_USERNAME and SPOTIFY_PLAYLIST_ID
@@ -154,6 +158,14 @@ Or you can provide a Spotify username and all public playlists will be found and
 
 ```env
 SPOTIFY_USERNAME=your_spotify_username_here
+```
+
+You can also use both options together - playlists will be combined and deduplicated:
+
+```env
+# Fetch all public playlists for the user AND add specific playlist IDs
+SPOTIFY_USERNAME=your_spotify_username_here
+SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
 ```
 
 #### Excluding Playlists

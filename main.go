@@ -112,41 +112,59 @@ func (app *Application) discoverServerID(ctx context.Context) error {
 }
 
 // getPlaylistMetadata retrieves metadata for all playlists to be processed
+// Supports both SPOTIFY_USERNAME and SPOTIFY_PLAYLIST_ID being set simultaneously
 func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 	var playlistMetas []PlaylistMeta
+	seenIDs := make(map[string]bool) // Track seen playlist IDs for deduplication
 
+	// Fetch public playlists for user if username is set
 	if app.config.Spotify.Username != "" {
-		// Fetch all public playlists for the user
 		publicPlaylists, err := app.spotifyClient.GetUserPublicPlaylists(app.config.Spotify.Username)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch public playlists for user %s: %w", app.config.Spotify.Username, err)
 		}
 
 		for _, pl := range publicPlaylists {
-			playlistMetas = append(playlistMetas, PlaylistMeta{
-				ID:          pl.ID,
-				Name:        pl.Name,
-				Description: pl.Description,
-				ArtworkURL:  pl.ArtworkURL,
-			})
+			if !seenIDs[pl.ID] {
+				seenIDs[pl.ID] = true
+				playlistMetas = append(playlistMetas, PlaylistMeta{
+					ID:          pl.ID,
+					Name:        pl.Name,
+					Description: pl.Description,
+					ArtworkURL:  pl.ArtworkURL,
+				})
+			}
 		}
-		fmt.Printf("🎵 Found %d public Spotify playlist(s) for user %s\n", len(playlistMetas), app.config.Spotify.Username)
-	} else {
-		// Process specific playlist IDs
+		fmt.Printf("🎵 Found %d public Spotify playlist(s) for user %s\n", len(publicPlaylists), app.config.Spotify.Username)
+	}
+
+	// Fetch specific playlist IDs if set
+	if len(app.config.Spotify.PlaylistIDs) > 0 {
+		addedCount := 0
 		for _, playlistID := range app.config.Spotify.PlaylistIDs {
+			// Skip if already added from username fetch
+			if seenIDs[playlistID] {
+				continue
+			}
+
 			playlistInfo, err := app.spotifyClient.GetPlaylistInfo(playlistID)
 			if err != nil {
 				log.Printf("❌ Failed to get playlist info for %s: %v", playlistID, err)
 				continue
 			}
+
+			seenIDs[playlistID] = true
 			playlistMetas = append(playlistMetas, PlaylistMeta{
 				ID:          playlistID,
 				Name:        playlistInfo.Name,
 				Description: playlistInfo.Description,
 				ArtworkURL:  playlistInfo.ArtworkURL,
 			})
+			addedCount++
 		}
-		fmt.Printf("🎵 Found %d Spotify playlist(s)\n", len(playlistMetas))
+		if addedCount > 0 {
+			fmt.Printf("🎵 Found %d additional Spotify playlist(s) from playlist IDs\n", addedCount)
+		}
 	}
 
 	// Filter out excluded playlist IDs
