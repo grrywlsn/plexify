@@ -253,7 +253,9 @@ func (c *Client) SearchTrack(ctx context.Context, song spotify.Song) (*PlexTrack
 			return c.trySearchVariations(ctx, title, artist)
 		}},
 		{"single quote variations", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
-			if strings.Contains(title, "'") || strings.Contains(artist, "'") {
+			// Check for both standard (') and curly (') apostrophes
+			if strings.Contains(title, "'") || strings.Contains(artist, "'") ||
+				strings.Contains(title, "'") || strings.Contains(artist, "'") {
 				return c.searchByTitleWithSingleQuoteVariations(ctx, title, artist)
 			}
 			return nil, nil
@@ -269,6 +271,19 @@ func (c *Client) SearchTrack(ctx context.Context, song spotify.Song) (*PlexTrack
 			featuringTitle := c.removeFeaturing(title)
 			if featuringTitle != title && featuringTitle != c.removeBrackets(title) {
 				return c.trySearchVariations(ctx, featuringTitle, artist)
+			}
+			return nil, nil
+		}},
+		{"featuring removed + normalized", func(ctx context.Context, title, artist string) (*PlexTrack, error) {
+			// Combine featuring removal with title normalization
+			// Handles: "Timeless (feat. X) - Remix" -> "timeless (remix)"
+			featuringTitle := c.removeFeaturing(title)
+			if featuringTitle != title {
+				normalizedFeaturingTitle := c.normalizeTitle(featuringTitle)
+				if normalizedFeaturingTitle != featuringTitle {
+					c.debugLog("🔍 SearchTrack: trying featuring-removed + normalized '%s' for '%s' by '%s'", normalizedFeaturingTitle, title, artist)
+					return c.trySearchVariations(ctx, normalizedFeaturingTitle, artist)
+				}
 			}
 			return nil, nil
 		}},
@@ -473,66 +488,42 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist string
 }
 
 // searchByTitleWithSingleQuoteVariations searches for tracks with single quotes by trying different variations
+// Note: Plex's search API often doesn't handle special apostrophe characters well, so we keep this minimal
+// and rely on searchEntireLibrary as a fallback for accurate matching
 func (c *Client) searchByTitleWithSingleQuoteVariations(ctx context.Context, title, artist string) (*PlexTrack, error) {
-	// If the title doesn't contain single quotes, use the regular search
-	if !strings.Contains(title, "'") {
+	// Check for any type of apostrophe/quote character
+	hasStandardApostrophe := strings.Contains(title, "'")
+	hasCurlyApostrophe := strings.Contains(title, "'")
+
+	// If the title doesn't contain any apostrophes, use the regular search
+	if !hasStandardApostrophe && !hasCurlyApostrophe {
 		return c.searchByTitle(ctx, title, artist)
 	}
 
-	// Try different variations of the title with single quotes
-	variations := []string{
-		title,                               // Original title
-		strings.ReplaceAll(title, "'", ""),  // Remove all single quotes
-		strings.ReplaceAll(title, "'", "`"), // Replace with backtick
-		strings.ReplaceAll(title, "'", "′"), // Replace with prime symbol
-		strings.ReplaceAll(title, "'", "'"), // Replace with different quote character
+	// Build variations list - keep it minimal since Plex API often fails with special chars anyway
+	// The searchEntireLibrary fallback handles these cases more reliably
+	seen := make(map[string]bool)
+	var variations []string
+
+	addVariation := func(v string) {
+		if v != "" && !seen[v] {
+			seen[v] = true
+			variations = append(variations, v)
+		}
 	}
 
-	// Also try variations with common contractions expanded
-	if strings.Contains(title, "n't") {
-		variations = append(variations, strings.ReplaceAll(title, "n't", " not"))
-	}
-	if strings.Contains(title, "'t") {
-		variations = append(variations, strings.ReplaceAll(title, "'t", " not"))
-	}
-	if strings.Contains(title, "'s") {
-		variations = append(variations, strings.ReplaceAll(title, "'s", " is"))
-		variations = append(variations, strings.ReplaceAll(title, "'s", "s")) // Just remove the apostrophe
-	}
-	if strings.Contains(title, "'re") {
-		variations = append(variations, strings.ReplaceAll(title, "'re", " are"))
-	}
-	if strings.Contains(title, "'ll") {
-		variations = append(variations, strings.ReplaceAll(title, "'ll", " will"))
-	}
-	if strings.Contains(title, "'ve") {
-		variations = append(variations, strings.ReplaceAll(title, "'ve", " have"))
-	}
-	if strings.Contains(title, "'d") {
-		variations = append(variations, strings.ReplaceAll(title, "'d", " would"))
-		variations = append(variations, strings.ReplaceAll(title, "'d", " had"))
-	}
+	// Core variations only (deduplicated) - Plex API rarely finds these anyway
+	addVariation(title)                               // Original title
+	addVariation(strings.ReplaceAll(title, "'", "'")) // Standard to curly
+	addVariation(strings.ReplaceAll(title, "'", "'")) // Curly to standard
 
-	// Try each variation
+	// Normalize both apostrophe types to nothing (creates "Its" from "It's" or "It's")
+	noApostrophe := strings.ReplaceAll(strings.ReplaceAll(title, "'", ""), "'", "")
+	addVariation(noApostrophe)
+
+	// Try each variation with title search only (most efficient)
 	for _, variation := range variations {
-		if variation == "" {
-			continue
-		}
-
-		// Try combined search first
-		track, err := c.searchByCombinedQuery(ctx, variation, artist)
-		if err == nil && track != nil {
-			return track, nil
-		}
-
-		// Try title search
-		track, err = c.searchByTitle(ctx, variation, artist)
-		if err == nil && track != nil {
-			return track, nil
-		}
-
-		// Try artist search
-		track, err = c.searchByArtist(ctx, variation, artist)
+		track, err := c.searchByTitle(ctx, variation, artist)
 		if err == nil && track != nil {
 			return track, nil
 		}
@@ -675,6 +666,15 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		normalizedTitleSimilarity := c.calculateStringSimilarity(normalizedTitleLower, normalizedTrackTitleLower)
 		c.debugLog("   Normalized title similarity: %.3f ('%s' vs '%s')", normalizedTitleSimilarity, normalizedTitleLower, normalizedTrackTitleLower)
 
+		// Also try with combined featuring removal + normalization for better matching
+		// This handles cases like "Timeless (feat. X) - Remix" vs "Timeless (Remix)"
+		featuringNormalizedTitleLower := strings.ToLower(strings.TrimSpace(c.normalizeTitle(c.removeFeaturing(title))))
+		featuringNormalizedTrackTitleLower := strings.ToLower(strings.TrimSpace(c.normalizeTitle(c.removeFeaturing(track.Title))))
+
+		// Calculate similarity with combined featuring removal + normalization
+		featuringNormalizedTitleSimilarity := c.calculateStringSimilarity(featuringNormalizedTitleLower, featuringNormalizedTrackTitleLower)
+		c.debugLog("   Featuring+normalized title similarity: %.3f ('%s' vs '%s')", featuringNormalizedTitleSimilarity, featuringNormalizedTitleLower, featuringNormalizedTrackTitleLower)
+
 		// Also try with "with" removed for better matching
 		withTitleLower := strings.ToLower(strings.TrimSpace(c.removeWith(title)))
 		withTrackTitleLower := strings.ToLower(strings.TrimSpace(c.removeWith(track.Title)))
@@ -719,6 +719,10 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 		if normalizedTitleSimilarity > titleSimilarity {
 			c.debugLog("   Using normalized title similarity: %.3f (was %.3f)", normalizedTitleSimilarity, titleSimilarity)
 			titleSimilarity = normalizedTitleSimilarity
+		}
+		if featuringNormalizedTitleSimilarity > titleSimilarity {
+			c.debugLog("   Using featuring+normalized title similarity: %.3f (was %.3f)", featuringNormalizedTitleSimilarity, titleSimilarity)
+			titleSimilarity = featuringNormalizedTitleSimilarity
 		}
 		if withTitleSimilarity > titleSimilarity {
 			c.debugLog("   Using 'with'-removed title similarity: %.3f (was %.3f)", withTitleSimilarity, titleSimilarity)
@@ -1492,7 +1496,23 @@ func (c *Client) removeBrackets(s string) string {
 
 // removeFeaturing removes "featuring" and any text after it from a string
 func (c *Client) removeFeaturing(s string) string {
-	// Handle various "featuring" formats (case insensitive)
+	// First, remove featuring inside parentheses like "(feat. X)" or "(featuring X)"
+	// This handles cases like "Timeless (feat. Playboi Carti & Doechii) - Remix"
+	featuringInParensPatterns := []string{
+		`\s*\(feat\.?\s+[^)]+\)`,   // (feat. X) or (feat X)
+		`\s*\(featuring\s+[^)]+\)`, // (featuring X)
+		`\s*\(ft\.?\s+[^)]+\)`,     // (ft. X) or (ft X)
+	}
+
+	for _, pattern := range featuringInParensPatterns {
+		re := regexp.MustCompile(`(?i)` + pattern)
+		if re.MatchString(s) {
+			s = re.ReplaceAllString(s, "")
+			s = strings.TrimSpace(s)
+		}
+	}
+
+	// Handle various "featuring" formats outside parentheses (case insensitive)
 	lowerS := strings.ToLower(s)
 
 	// Check for "featuring" patterns
@@ -1625,6 +1645,33 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 	}
 
 	for _, pattern := range yearRemasteredPatterns {
+		if pattern.MatchString(s) {
+			// Find the position of the pattern
+			matches := pattern.FindStringIndex(s)
+			if len(matches) > 0 {
+				// Return the original string up to the pattern (preserving original case)
+				result := strings.TrimSpace(s[:matches[0]])
+				// Clean up trailing dashes and spaces
+				result = strings.TrimSpace(strings.TrimSuffix(result, "-"))
+				return result
+			}
+		}
+	}
+
+	// Handle movie/film soundtrack patterns with movie names
+	// Example: "Friend Of Mine - from the Smurfs Movie Soundtrack"
+	// Example: "Song Name - from the Avatar Soundtrack"
+	// Example: "Song Name (from the Frozen Movie Soundtrack)"
+	movieSoundtrackPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\s*-\s*from\s+the\s+.+\s+movie\s+soundtrack\s*$`),
+		regexp.MustCompile(`(?i)\s*-\s*from\s+the\s+.+\s+soundtrack\s*$`),
+		regexp.MustCompile(`(?i)\s*-\s*from\s+.+\s+soundtrack\s*$`),
+		regexp.MustCompile(`(?i)\s*\(\s*from\s+the\s+.+\s+movie\s+soundtrack\s*\)\s*$`),
+		regexp.MustCompile(`(?i)\s*\(\s*from\s+the\s+.+\s+soundtrack\s*\)\s*$`),
+		regexp.MustCompile(`(?i)\s*\(\s*from\s+.+\s+soundtrack\s*\)\s*$`),
+	}
+
+	for _, pattern := range movieSoundtrackPatterns {
 		if pattern.MatchString(s) {
 			// Find the position of the pattern
 			matches := pattern.FindStringIndex(s)

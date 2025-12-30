@@ -3473,3 +3473,166 @@ func TestArtistFeaturingRemoval(t *testing.T) {
 		t.Errorf("Expected high confidence match (>= 0.9), got %.3f", confidence)
 	}
 }
+
+func TestRemixWithFeaturingMatching(t *testing.T) {
+	client := &Client{}
+	client.SetDebug(true)
+
+	// Test case: Spotify "Timeless (feat. Playboi Carti & Doechii) - Remix" by "The Weeknd"
+	// should match Plex "Timeless (remix)" by "The Weeknd"
+	spotifySong := spotify.Song{
+		Name:   "Timeless (feat. Playboi Carti & Doechii) - Remix",
+		Artist: "The Weeknd",
+	}
+
+	plexTracks := []PlexTrack{
+		{
+			ID:     "timeless-remix",
+			Title:  "Timeless (remix)",
+			Artist: "The Weeknd",
+		},
+	}
+
+	t.Logf("Testing remix with featuring removal:")
+	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Plex: '%s' by '%s'", plexTracks[0].Title, plexTracks[0].Artist)
+
+	// Test the transformation chain:
+	// 1. removeFeaturing: "Timeless (feat. Playboi Carti & Doechii) - Remix" -> "Timeless - Remix"
+	featuringRemoved := client.removeFeaturing(spotifySong.Name)
+	expectedAfterFeaturing := "Timeless - Remix"
+	if featuringRemoved != expectedAfterFeaturing {
+		t.Errorf("removeFeaturing(%q) = %q, expected %q", spotifySong.Name, featuringRemoved, expectedAfterFeaturing)
+	}
+	t.Logf("After removeFeaturing: '%s'", featuringRemoved)
+
+	// 2. normalizeTitle: "Timeless - Remix" -> "timeless (remix)"
+	normalized := client.normalizeTitle(featuringRemoved)
+	expectedAfterNormalize := "timeless (remix)"
+	if normalized != expectedAfterNormalize {
+		t.Errorf("normalizeTitle(%q) = %q, expected %q", featuringRemoved, normalized, expectedAfterNormalize)
+	}
+	t.Logf("After normalizeTitle: '%s'", normalized)
+
+	// 3. Plex track normalized: "Timeless (remix)" -> "timeless (remix)"
+	plexNormalized := client.normalizeTitle(plexTracks[0].Title)
+	expectedPlexNormalized := "timeless (remix)"
+	if plexNormalized != expectedPlexNormalized {
+		t.Errorf("normalizeTitle(%q) = %q, expected %q", plexTracks[0].Title, plexNormalized, expectedPlexNormalized)
+	}
+	t.Logf("Plex normalized: '%s'", plexNormalized)
+
+	// Verify they match after transformation
+	if normalized != plexNormalized {
+		t.Errorf("Transformed titles don't match: '%s' vs '%s'", normalized, plexNormalized)
+	}
+
+	// Test FindBestMatch
+	result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+
+	if result == nil {
+		t.Error("Expected FindBestMatch to find a match for 'Timeless (feat. Playboi Carti & Doechii) - Remix' by 'The Weeknd'")
+	} else {
+		t.Logf("✅ Found match: '%s' by '%s'", result.Title, result.Artist)
+
+		if result.Title != "Timeless (remix)" {
+			t.Errorf("Expected match to 'Timeless (remix)', got '%s'", result.Title)
+		}
+		if result.Artist != "The Weeknd" {
+			t.Errorf("Expected match to 'The Weeknd', got '%s'", result.Artist)
+		}
+	}
+
+	// Test that the match has reasonable confidence
+	// Note: confidence uses original titles, so it will be lower than the FindBestMatch score
+	// which applies transformations. The key test is that FindBestMatch succeeded.
+	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	t.Logf("Match confidence: %.3f", confidence)
+
+	if confidence < 0.6 {
+		t.Errorf("Expected reasonable confidence match (>= 0.6), got %.3f", confidence)
+	}
+}
+
+func TestMovieSoundtrackMatching(t *testing.T) {
+	client := &Client{}
+	client.SetDebug(true)
+
+	// Test case: Spotify "Friend Of Mine - from the Smurfs Movie Soundtrack" by "Greyson Chance"
+	// should match Plex "Friend Of Mine" by "Greyson Chance"
+	spotifySong := spotify.Song{
+		Name:   "Friend Of Mine - from the Smurfs Movie Soundtrack",
+		Artist: "Greyson Chance",
+	}
+
+	plexTracks := []PlexTrack{
+		{
+			ID:     "friend-of-mine",
+			Title:  "Friend Of Mine",
+			Artist: "Greyson Chance",
+		},
+	}
+
+	t.Logf("Testing movie soundtrack suffix removal:")
+	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Plex: '%s' by '%s'", plexTracks[0].Title, plexTracks[0].Artist)
+
+	// Test RemoveCommonSuffixes removes the soundtrack suffix
+	cleanedTitle := client.RemoveCommonSuffixes(spotifySong.Name)
+	expectedCleanedTitle := "Friend Of Mine"
+	if cleanedTitle != expectedCleanedTitle {
+		t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", spotifySong.Name, cleanedTitle, expectedCleanedTitle)
+	}
+	t.Logf("After RemoveCommonSuffixes: '%s'", cleanedTitle)
+
+	// Test FindBestMatch
+	result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+
+	if result == nil {
+		t.Error("Expected FindBestMatch to find a match for 'Friend Of Mine - from the Smurfs Movie Soundtrack' by 'Greyson Chance'")
+	} else {
+		t.Logf("✅ Found match: '%s' by '%s'", result.Title, result.Artist)
+
+		if result.Title != "Friend Of Mine" {
+			t.Errorf("Expected match to 'Friend Of Mine', got '%s'", result.Title)
+		}
+		if result.Artist != "Greyson Chance" {
+			t.Errorf("Expected match to 'Greyson Chance', got '%s'", result.Artist)
+		}
+	}
+
+	// Test that the match has reasonable confidence
+	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	t.Logf("Match confidence: %.3f", confidence)
+
+	if confidence < 0.6 {
+		t.Errorf("Expected reasonable confidence match (>= 0.6), got %.3f", confidence)
+	}
+}
+
+func TestMovieSoundtrackVariations(t *testing.T) {
+	client := &Client{}
+
+	// Test various soundtrack suffix patterns
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Friend Of Mine - from the Smurfs Movie Soundtrack", "Friend Of Mine"},
+		{"Let It Go - from the Frozen Soundtrack", "Let It Go"},
+		{"Song Name - from Avatar Soundtrack", "Song Name"},
+		{"Track (from the Lion King Movie Soundtrack)", "Track"},
+		{"Another Song (from the Matrix Soundtrack)", "Another Song"},
+		{"My Song - from the motion picture", "My Song"},
+		{"Test Track - from the film", "Test Track"},
+	}
+
+	for _, test := range tests {
+		result := client.RemoveCommonSuffixes(test.input)
+		if result != test.expected {
+			t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", test.input, result, test.expected)
+		} else {
+			t.Logf("✅ RemoveCommonSuffixes(%q) = %q", test.input, result)
+		}
+	}
+}
