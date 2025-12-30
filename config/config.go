@@ -17,11 +17,12 @@ type Config struct {
 
 // SpotifyConfig holds Spotify API configuration
 type SpotifyConfig struct {
-	ClientID     string
-	ClientSecret string
-	RedirectURI  string
-	Username     string   // Spotify username to get all public playlists
-	PlaylistIDs  []string // Spotify playlist IDs from comma-separated list
+	ClientID            string
+	ClientSecret        string
+	RedirectURI         string
+	Username            string   // Spotify username to get all public playlists
+	PlaylistIDs         []string // Spotify playlist IDs from comma-separated list
+	ExcludedPlaylistIDs []string // Playlist IDs to exclude from processing
 }
 
 // PlexConfig holds Plex server configuration
@@ -84,11 +85,12 @@ func LoadWithOverrides(overrides map[string]string) (*Config, error) {
 // initializeDefaults sets up the initial configuration with default values
 func (c *Config) initializeDefaults() {
 	c.Spotify = SpotifyConfig{
-		ClientID:     "",                               // Empty by default
-		ClientSecret: "",                               // Empty by default
-		RedirectURI:  "http://localhost:8080/callback", // Default value
-		Username:     "",                               // Empty by default
-		PlaylistIDs:  nil,                              // Empty by default
+		ClientID:            "",                               // Empty by default
+		ClientSecret:        "",                               // Empty by default
+		RedirectURI:         "http://localhost:8080/callback", // Default value
+		Username:            "",                               // Empty by default
+		PlaylistIDs:         nil,                              // Empty by default
+		ExcludedPlaylistIDs: nil,                              // Empty by default
 	}
 
 	c.Plex = PlexConfig{
@@ -116,6 +118,9 @@ func (c *Config) loadFromOSEnv() {
 	}
 	if value := os.Getenv("SPOTIFY_PLAYLIST_ID"); value != "" {
 		c.Spotify.PlaylistIDs = parseCommaSeparatedList(value)
+	}
+	if value := os.Getenv("SPOTIFY_PLAYLIST_EXCLUDED_ID"); value != "" {
+		c.Spotify.ExcludedPlaylistIDs = parseCommaSeparatedList(value)
 	}
 
 	// Plex configuration
@@ -158,6 +163,9 @@ func (c *Config) loadFromEnvFile() {
 	}
 	if value := os.Getenv("SPOTIFY_PLAYLIST_ID"); value != "" {
 		c.Spotify.PlaylistIDs = parseCommaSeparatedList(value)
+	}
+	if value := os.Getenv("SPOTIFY_PLAYLIST_EXCLUDED_ID"); value != "" {
+		c.Spotify.ExcludedPlaylistIDs = parseCommaSeparatedList(value)
 	}
 
 	// Plex configuration (only replace if values exist and are not empty)
@@ -259,6 +267,8 @@ func (c *Config) applyOverrides(overrides map[string]string) {
 			c.Spotify.Username = value
 		case "SPOTIFY_PLAYLIST_ID":
 			c.Spotify.PlaylistIDs = parseCommaSeparatedList(value)
+		case "SPOTIFY_PLAYLIST_EXCLUDED_ID":
+			c.Spotify.ExcludedPlaylistIDs = parseCommaSeparatedList(value)
 		case "PLEX_URL":
 			c.Plex.URL = value
 		case "PLEX_TOKEN":

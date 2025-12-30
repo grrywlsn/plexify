@@ -114,6 +114,10 @@ SPOTIFY_USERNAME=your_spotify_username_here
 
 # Option 2: Comma-separated list of specific Spotify playlist IDs
 SPOTIFY_PLAYLIST_ID=playlist_id_1,playlist_id_2,playlist_id_3
+
+# Optional: Comma-separated list of playlist IDs to exclude from processing
+# This works with both SPOTIFY_USERNAME and SPOTIFY_PLAYLIST_ID
+SPOTIFY_PLAYLIST_EXCLUDED_ID=playlist_id_to_exclude_1,playlist_id_to_exclude_2
 ```
 
 These can be set either as environment variables, loaded from a `.env` file, or passed in as flags, like so:
@@ -151,6 +155,20 @@ Or you can provide a Spotify username and all public playlists will be found and
 ```env
 SPOTIFY_USERNAME=your_spotify_username_here
 ```
+
+#### Excluding Playlists
+
+You can exclude specific playlists from being synced by setting `SPOTIFY_PLAYLIST_EXCLUDED_ID`. This works with both `SPOTIFY_USERNAME` and `SPOTIFY_PLAYLIST_ID`:
+
+```env
+# Exclude a single playlist
+SPOTIFY_PLAYLIST_EXCLUDED_ID=37i9dQZF1DXcBWIGoYBM5M
+
+# Exclude multiple playlists
+SPOTIFY_PLAYLIST_EXCLUDED_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
+```
+
+This is useful when syncing all public playlists for a user but wanting to skip certain ones.
 
 > [!IMPORTANT]
 > Each Spotify playlist will be synced to a new Plex playlist with the exact same name as the original. If a playlist of the same name exists in Plex, it will update it to match the matched Spotify tracks - this **will remove other songs if they exist**.
