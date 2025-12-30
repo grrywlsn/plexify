@@ -130,7 +130,7 @@ func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 				ArtworkURL:  pl.ArtworkURL,
 			})
 		}
-		fmt.Printf("🎵 Processing %d public Spotify playlist(s) for user %s...\n\n", len(playlistMetas), app.config.Spotify.Username)
+		fmt.Printf("🎵 Found %d public Spotify playlist(s) for user %s\n", len(playlistMetas), app.config.Spotify.Username)
 	} else {
 		// Process specific playlist IDs
 		for _, playlistID := range app.config.Spotify.PlaylistIDs {
@@ -146,10 +146,40 @@ func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 				ArtworkURL:  playlistInfo.ArtworkURL,
 			})
 		}
-		fmt.Printf("🎵 Processing %d Spotify playlist(s)...\n\n", len(playlistMetas))
+		fmt.Printf("🎵 Found %d Spotify playlist(s)\n", len(playlistMetas))
 	}
 
+	// Filter out excluded playlist IDs
+	playlistMetas = app.filterExcludedPlaylists(playlistMetas)
+
+	fmt.Printf("🎵 Processing %d Spotify playlist(s)...\n\n", len(playlistMetas))
+
 	return playlistMetas, nil
+}
+
+// filterExcludedPlaylists removes any playlists that are in the excluded list
+func (app *Application) filterExcludedPlaylists(playlists []PlaylistMeta) []PlaylistMeta {
+	if len(app.config.Spotify.ExcludedPlaylistIDs) == 0 {
+		return playlists
+	}
+
+	// Build a set of excluded IDs for efficient lookup
+	excludedSet := make(map[string]bool)
+	for _, id := range app.config.Spotify.ExcludedPlaylistIDs {
+		excludedSet[id] = true
+	}
+
+	// Filter out excluded playlists
+	var filtered []PlaylistMeta
+	for _, pl := range playlists {
+		if excludedSet[pl.ID] {
+			fmt.Printf("⏭️  Excluding playlist: %s (%s)\n", pl.Name, pl.ID)
+		} else {
+			filtered = append(filtered, pl)
+		}
+	}
+
+	return filtered
 }
 
 // processPlaylists processes each playlist sequentially
@@ -366,12 +396,13 @@ func parseFlags() map[string]string {
 	overrides := make(map[string]string)
 
 	// Spotify configuration flags
-	var spotifyClientID, spotifyClientSecret, spotifyRedirectURI, spotifyUsername, spotifyPlaylistID string
+	var spotifyClientID, spotifyClientSecret, spotifyRedirectURI, spotifyUsername, spotifyPlaylistID, spotifyPlaylistExcludedID string
 	flag.StringVar(&spotifyClientID, "SPOTIFY_CLIENT_ID", "", "Spotify Client ID (overrides env var)")
 	flag.StringVar(&spotifyClientSecret, "SPOTIFY_CLIENT_SECRET", "", "Spotify Client Secret (overrides env var)")
 	flag.StringVar(&spotifyRedirectURI, "SPOTIFY_REDIRECT_URI", "", "Spotify Redirect URI (optional, defaults to http://localhost:8080/callback, overrides env var)")
 	flag.StringVar(&spotifyUsername, "SPOTIFY_USERNAME", "", "Spotify username to fetch all public playlists (overrides env var)")
 	flag.StringVar(&spotifyPlaylistID, "SPOTIFY_PLAYLIST_ID", "", "Comma-separated list of Spotify playlist IDs (overrides env var)")
+	flag.StringVar(&spotifyPlaylistExcludedID, "SPOTIFY_PLAYLIST_EXCLUDED_ID", "", "Comma-separated list of Spotify playlist IDs to exclude (overrides env var)")
 
 	// Plex configuration flags
 	var plexURL, plexToken, plexLibrarySectionID, plexServerID string
@@ -410,6 +441,9 @@ func parseFlags() map[string]string {
 	}
 	if spotifyPlaylistID != "" {
 		overrides["SPOTIFY_PLAYLIST_ID"] = spotifyPlaylistID
+	}
+	if spotifyPlaylistExcludedID != "" {
+		overrides["SPOTIFY_PLAYLIST_EXCLUDED_ID"] = spotifyPlaylistExcludedID
 	}
 	if plexURL != "" {
 		overrides["PLEX_URL"] = plexURL
