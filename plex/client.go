@@ -1499,9 +1499,9 @@ func (c *Client) removeFeaturing(s string) string {
 	// First, remove featuring inside parentheses like "(feat. X)" or "(featuring X)"
 	// This handles cases like "Timeless (feat. Playboi Carti & Doechii) - Remix"
 	featuringInParensPatterns := []string{
-		`\s*\(feat\.?\s+[^)]+\)`,     // (feat. X) or (feat X)
-		`\s*\(featuring\s+[^)]+\)`,   // (featuring X)
-		`\s*\(ft\.?\s+[^)]+\)`,       // (ft. X) or (ft X)
+		`\s*\(feat\.?\s+[^)]+\)`,   // (feat. X) or (feat X)
+		`\s*\(featuring\s+[^)]+\)`, // (featuring X)
+		`\s*\(ft\.?\s+[^)]+\)`,     // (ft. X) or (ft X)
 	}
 
 	for _, pattern := range featuringInParensPatterns {
