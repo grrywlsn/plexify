@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/LukeHagar/plexgo"
-	"github.com/garry/plexify/config"
-	"github.com/garry/plexify/spotify"
+	"github.com/grrywlsn/plexify/config"
+	"github.com/grrywlsn/plexify/spotify"
 )
 
 // Constants for Plex API

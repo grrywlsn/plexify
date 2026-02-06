@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/garry/plexify/config"
-	"github.com/garry/plexify/musicbrainz"
+	"github.com/grrywlsn/plexify/config"
+	"github.com/grrywlsn/plexify/musicbrainz"
 	"github.com/zmb3/spotify/v2"
 	spotifyauth "github.com/zmb3/spotify/v2/auth"
 	"golang.org/x/oauth2"

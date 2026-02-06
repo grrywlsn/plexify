@@ -3,7 +3,7 @@ package spotify
 import (
 	"testing"
 
-	"github.com/garry/plexify/config"
+	"github.com/grrywlsn/plexify/config"
 )
 
 func TestNewClient(t *testing.T) {

@@ -57,7 +57,7 @@ func NewClient() *Client {
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-		userAgent: "Plexify/1.0 (https://github.com/garry/plexify)",
+		userAgent: "Plexify/1.0 (https://github.com/grrywlsn/plexify)",
 	}
 }
 
