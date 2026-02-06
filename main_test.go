@@ -3,9 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/garry/plexify/config"
-	"github.com/garry/plexify/plex"
-	"github.com/garry/plexify/spotify"
+	"github.com/grrywlsn/plexify/config"
+	"github.com/grrywlsn/plexify/plex"
+	"github.com/grrywlsn/plexify/spotify"
 )
 
 func TestDisplayMissingTracksSummary(t *testing.T) {

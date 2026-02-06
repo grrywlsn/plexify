@@ -1,4 +1,4 @@
-module github.com/garry/plexify
+module github.com/grrywlsn/plexify
 
 go 1.25
 

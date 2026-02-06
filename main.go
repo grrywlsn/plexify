@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/garry/plexify/config"
-	"github.com/garry/plexify/musicbrainz"
-	"github.com/garry/plexify/plex"
-	"github.com/garry/plexify/spotify"
+	"github.com/grrywlsn/plexify/config"
+	"github.com/grrywlsn/plexify/musicbrainz"
+	"github.com/grrywlsn/plexify/plex"
+	"github.com/grrywlsn/plexify/spotify"
 )
 
 // Version information - set during build
