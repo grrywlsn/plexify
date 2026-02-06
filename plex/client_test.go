@@ -2815,6 +2815,34 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 			t.Logf("✅ Punctuation normalization works: 'Chloe × Halle' -> '%s'", normalized)
 		}
 	})
+
+	t.Run("EllipsisNormalization", func(t *testing.T) {
+		// Test that the Unicode ellipsis character is normalized to three periods
+		// This handles cases like Spotify "DANCE..." vs Plex "DANCE…"
+		normalized := client.normalizePunctuation("DANCE\u2026")
+		expected := "DANCE..."
+
+		if normalized != expected {
+			t.Errorf("Expected normalization of 'DANCE…' to be '%s', got '%s'", expected, normalized)
+		} else {
+			t.Logf("✅ Ellipsis normalization works: 'DANCE…' -> '%s'", normalized)
+		}
+	})
+
+	t.Run("EllipsisMatchingDANCE", func(t *testing.T) {
+		// Test that "DANCE..." (Spotify, three periods) matches "DANCE…" (Plex, Unicode ellipsis)
+		plexTracks := []PlexTrack{
+			{ID: "1", Title: "DANCE\u2026", Artist: "Slayyyter"},
+		}
+
+		result := client.FindBestMatch(plexTracks, "DANCE...", "Slayyyter")
+
+		if result == nil {
+			t.Errorf("Expected to find a match for 'DANCE...' by 'Slayyyter' but got nil")
+		} else {
+			t.Logf("✅ Ellipsis matching works: 'DANCE...' matched with 'DANCE…' by '%s'", result.Artist)
+		}
+	})
 }
 
 func TestPlaylistSyncAttribution(t *testing.T) {

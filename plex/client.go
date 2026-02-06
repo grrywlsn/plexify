@@ -1784,6 +1784,9 @@ func (c *Client) normalizePunctuation(s string) string {
 	s = strings.ReplaceAll(s, "\u2018", "'")  // Left single quotation mark to straight quote
 	s = strings.ReplaceAll(s, "\u2019", "'")  // Right single quotation mark to straight quote
 
+	// Normalize ellipsis character to three periods
+	s = strings.ReplaceAll(s, "\u2026", "...") // Horizontal ellipsis to three periods
+
 	return s
 }
 
