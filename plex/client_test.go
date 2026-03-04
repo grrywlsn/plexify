@@ -1309,9 +1309,26 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    `Song Title (Love Theme from "Movie Name")`,
 				expected: "Song Title",
 			},
-			// Streaming service series tests
-			{
-				input:    `In The Dark - From the Netflix Series "Nobody Wants This" Season 2`,
+		// Generic "From" with quoted title tests (soundtrack songs)
+		{
+			input:    `Save The Day - From "Hoppers"`,
+			expected: "Save The Day",
+		},
+		{
+			input:    `Song Title - From "Some Movie"`,
+			expected: "Song Title",
+		},
+		{
+			input:    `Song Title (From "Some Movie")`,
+			expected: "Song Title",
+		},
+		{
+			input:    `My Song - From "Movie: The Sequel"`,
+			expected: "My Song",
+		},
+		// Streaming service series tests
+		{
+			input:    `In The Dark - From the Netflix Series "Nobody Wants This" Season 2`,
 				expected: "In The Dark",
 			},
 			{
@@ -3663,4 +3680,169 @@ func TestMovieSoundtrackVariations(t *testing.T) {
 			t.Logf("✅ RemoveCommonSuffixes(%q) = %q", test.input, result)
 		}
 	}
+}
+
+func TestFromQuotedTitleMatchingScenario(t *testing.T) {
+	client := &Client{}
+
+	spotifySong := spotify.Song{
+		ID:       "test_save_the_day",
+		Name:     `Save The Day - From "Hoppers"`,
+		Artist:   "SZA",
+		Album:    "Hoppers (Original Motion Picture Soundtrack)",
+		Duration: 210000,
+		URI:      "spotify:track:test_save_the_day",
+		ISRC:     "TEST22222222",
+	}
+
+	plexTracks := []PlexTrack{
+		{
+			ID:     "plex_save_the_day",
+			Title:  "Save the Day",
+			Artist: "SZA",
+			Album:  "Hoppers (Original Motion Picture Soundtrack)",
+		},
+		{
+			ID:     "plex_other_song",
+			Title:  "Other Song",
+			Artist: "Other Artist",
+			Album:  "Other Album",
+		},
+	}
+
+	t.Run("SuffixRemoval", func(t *testing.T) {
+		cleaned := client.RemoveCommonSuffixes(spotifySong.Name)
+		if cleaned != "Save The Day" {
+			t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q",
+				spotifySong.Name, cleaned, "Save The Day")
+		}
+	})
+
+	t.Run("SuffixRemovalVariants", func(t *testing.T) {
+		tests := []struct {
+			input    string
+			expected string
+		}{
+			{`Save The Day - From "Hoppers"`, "Save The Day"},
+			{`Song - From "Movie Name"`, "Song"},
+			{`Title (From "Show Name")`, "Title"},
+			{`Track - From "A: Subtitle"`, "Track"},
+			{`My Song - from "lowercase movie"`, "My Song"},
+		}
+		for _, tc := range tests {
+			result := client.RemoveCommonSuffixes(tc.input)
+			if result != tc.expected {
+				t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", tc.input, result, tc.expected)
+			}
+		}
+	})
+
+	t.Run("FindBestMatchFindsCorrectTrack", func(t *testing.T) {
+		result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+
+		if result == nil {
+			t.Fatal("Expected to find a match, got nil")
+		}
+
+		if result.Title != "Save the Day" {
+			t.Errorf("Expected match 'Save the Day', got '%s'", result.Title)
+		}
+		if result.Artist != "SZA" {
+			t.Errorf("Expected artist 'SZA', got '%s'", result.Artist)
+		}
+	})
+
+	t.Run("FindBestMatchWithSuffixRemovedTitle", func(t *testing.T) {
+		cleanedTitle := client.RemoveCommonSuffixes(spotifySong.Name)
+		result := client.FindBestMatch(plexTracks, cleanedTitle, spotifySong.Artist)
+
+		if result == nil {
+			t.Fatal("Expected to find a match with cleaned title, got nil")
+		}
+
+		if result.Title != "Save the Day" {
+			t.Errorf("Expected match 'Save the Day', got '%s'", result.Title)
+		}
+	})
+
+	t.Run("SimilarityScores", func(t *testing.T) {
+		spotifyTitle := spotifySong.Name
+		plexTitle := "Save the Day"
+
+		originalSimilarity := client.calculateStringSimilarity(
+			strings.ToLower(strings.TrimSpace(spotifyTitle)),
+			strings.ToLower(strings.TrimSpace(plexTitle)),
+		)
+
+		suffixRemoved := client.RemoveCommonSuffixes(spotifyTitle)
+		cleanedSimilarity := client.calculateStringSimilarity(
+			strings.ToLower(strings.TrimSpace(suffixRemoved)),
+			strings.ToLower(strings.TrimSpace(plexTitle)),
+		)
+
+		t.Logf("Original similarity:       %.3f ('%s' vs '%s')", originalSimilarity, spotifyTitle, plexTitle)
+		t.Logf("Suffix-removed similarity:  %.3f ('%s' vs '%s')", cleanedSimilarity, suffixRemoved, plexTitle)
+
+		if cleanedSimilarity <= originalSimilarity {
+			t.Errorf("Suffix-removed similarity (%.3f) should be higher than original (%.3f)",
+				cleanedSimilarity, originalSimilarity)
+		}
+
+		if cleanedSimilarity < 0.9 {
+			t.Errorf("Suffix-removed similarity should be >= 0.9, got %.3f", cleanedSimilarity)
+		}
+	})
+
+	t.Run("ConfidenceAboveThreshold", func(t *testing.T) {
+		plexTrack := &PlexTrack{
+			ID:     "plex_save_the_day",
+			Title:  "Save the Day",
+			Artist: "SZA",
+		}
+
+		confidence := client.calculateConfidence(spotifySong, plexTrack, "title_artist")
+		t.Logf("Confidence: %.3f (threshold: %.3f)", confidence, MinConfidenceScore)
+
+		if confidence < MinConfidenceScore {
+			t.Errorf("Confidence (%.3f) should be >= threshold (%.3f)",
+				confidence, MinConfidenceScore)
+		}
+	})
+
+	t.Run("DoesNotMatchWrongTrack", func(t *testing.T) {
+		wrongTracks := []PlexTrack{
+			{
+				ID:     "plex_wrong",
+				Title:  "Completely Different Song",
+				Artist: "Different Artist",
+				Album:  "Different Album",
+			},
+		}
+
+		result := client.FindBestMatch(wrongTracks, spotifySong.Name, spotifySong.Artist)
+		if result != nil {
+			t.Errorf("Should not match unrelated track, but matched '%s' by '%s'",
+				result.Title, result.Artist)
+		}
+	})
+
+	t.Run("ExistingRulesNotBroken", func(t *testing.T) {
+		// Verify that more specific "From" patterns still work correctly
+		// and the generic quoted-title pattern doesn't interfere
+		tests := []struct {
+			input    string
+			expected string
+		}{
+			{`Swan Song - From the Motion Picture "Alita"`, "Swan Song"},
+			{`Theme - From the Netflix Series "Wednesday"`, "Theme"},
+			{`Song - From the Film "Movie"`, "Song"},
+			{`Save The Day - From "Hoppers"`, "Save The Day"},
+		}
+		for _, tc := range tests {
+			result := client.RemoveCommonSuffixes(tc.input)
+			if result != tc.expected {
+				t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", tc.input, result, tc.expected)
+			}
+		}
+	})
 }

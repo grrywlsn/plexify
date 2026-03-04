@@ -1685,6 +1685,27 @@ func (c *Client) RemoveCommonSuffixes(s string) string {
 		}
 	}
 
+	// Handle generic "From" with quoted title patterns (common Spotify format for soundtracks)
+	// Example: 'Save The Day - From "Hoppers"'
+	// Example: 'Song Name (From "Movie Title")'
+	fromQuotedTitlePatterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)\s*-\s*from\s+"[^"]*"\s*$`),
+		regexp.MustCompile(`(?i)\s*\(\s*from\s+"[^"]*"\s*\)\s*$`),
+		regexp.MustCompile("(?i)\\s*-\\s*from\\s+\u201C[^\u201D]*\u201D\\s*$"),
+		regexp.MustCompile("(?i)\\s*\\(\\s*from\\s+\u201C[^\u201D]*\u201D\\s*\\)\\s*$"),
+	}
+
+	for _, pattern := range fromQuotedTitlePatterns {
+		if pattern.MatchString(s) {
+			matches := pattern.FindStringIndex(s)
+			if len(matches) > 0 {
+				result := strings.TrimSpace(s[:matches[0]])
+				result = strings.TrimSpace(strings.TrimSuffix(result, "-"))
+				return result
+			}
+		}
+	}
+
 	// Handle streaming service series patterns (Netflix, Hulu, Prime Video, etc.)
 	// Example: " - From the Netflix Series "Show Name" Season X"
 	streamingSeriesPatterns := []*regexp.Regexp{
