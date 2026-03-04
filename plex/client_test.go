@@ -1309,26 +1309,26 @@ func TestSearchFlowSimulation(t *testing.T) {
 				input:    `Song Title (Love Theme from "Movie Name")`,
 				expected: "Song Title",
 			},
-		// Generic "From" with quoted title tests (soundtrack songs)
-		{
-			input:    `Save The Day - From "Hoppers"`,
-			expected: "Save The Day",
-		},
-		{
-			input:    `Song Title - From "Some Movie"`,
-			expected: "Song Title",
-		},
-		{
-			input:    `Song Title (From "Some Movie")`,
-			expected: "Song Title",
-		},
-		{
-			input:    `My Song - From "Movie: The Sequel"`,
-			expected: "My Song",
-		},
-		// Streaming service series tests
-		{
-			input:    `In The Dark - From the Netflix Series "Nobody Wants This" Season 2`,
+			// Generic "From" with quoted title tests (soundtrack songs)
+			{
+				input:    `Save The Day - From "Hoppers"`,
+				expected: "Save The Day",
+			},
+			{
+				input:    `Song Title - From "Some Movie"`,
+				expected: "Song Title",
+			},
+			{
+				input:    `Song Title (From "Some Movie")`,
+				expected: "Song Title",
+			},
+			{
+				input:    `My Song - From "Movie: The Sequel"`,
+				expected: "My Song",
+			},
+			// Streaming service series tests
+			{
+				input:    `In The Dark - From the Netflix Series "Nobody Wants This" Season 2`,
 				expected: "In The Dark",
 			},
 			{
