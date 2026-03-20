@@ -1,21 +1,20 @@
-package main
+package app
 
 import (
 	"testing"
 
 	"github.com/grrywlsn/plexify/config"
 	"github.com/grrywlsn/plexify/plex"
-	"github.com/grrywlsn/plexify/spotify"
+	"github.com/grrywlsn/plexify/track"
 )
 
 func TestDisplayMissingTracksSummary(t *testing.T) {
 	app := &Application{}
 
-	// Create test data with missing tracks
 	missingTracks := []plex.MatchResult{
 		{
-			SpotifySong: spotify.Song{
-				ID:            "spotify_track_id_1",
+			SourceTrack: track.Track{
+				ID:            "pl1:1",
 				Name:          "Test Song 1",
 				Artist:        "Test Artist 1",
 				ISRC:          "TEST12345678",
@@ -26,12 +25,10 @@ func TestDisplayMissingTracksSummary(t *testing.T) {
 			Confidence: 0.0,
 		},
 		{
-			SpotifySong: spotify.Song{
-				ID:            "spotify_track_id_2",
-				Name:          "Test Song 2",
-				Artist:        "Test Artist 2",
-				ISRC:          "", // Empty ISRC to test that case
-				MusicBrainzID: "", // Empty MusicBrainz ID to test that case
+			SourceTrack: track.Track{
+				ID:     "pl1:2",
+				Name:   "Test Song 2",
+				Artist: "Test Artist 2",
 			},
 			PlexTrack:  nil,
 			MatchType:  "none",
@@ -39,15 +36,14 @@ func TestDisplayMissingTracksSummary(t *testing.T) {
 		},
 	}
 
-	// Test that the function doesn't panic
 	app.displayMissingTracksSummary(missingTracks)
 }
 
 func TestFilterExcludedPlaylists_NoExclusions(t *testing.T) {
 	app := &Application{
 		config: &config.Config{
-			Spotify: config.SpotifyConfig{
-				ExcludedPlaylistIDs: nil, // No exclusions
+			MusicSocial: config.MusicSocialConfig{
+				ExcludedPlaylistIDs: nil,
 			},
 		},
 	}
@@ -68,7 +64,7 @@ func TestFilterExcludedPlaylists_NoExclusions(t *testing.T) {
 func TestFilterExcludedPlaylists_SingleExclusion(t *testing.T) {
 	app := &Application{
 		config: &config.Config{
-			Spotify: config.SpotifyConfig{
+			MusicSocial: config.MusicSocialConfig{
 				ExcludedPlaylistIDs: []string{"playlist2"},
 			},
 		},
@@ -86,14 +82,12 @@ func TestFilterExcludedPlaylists_SingleExclusion(t *testing.T) {
 		t.Errorf("Expected 2 playlists, got %d", len(result))
 	}
 
-	// Verify the correct playlists remain
 	for _, pl := range result {
 		if pl.ID == "playlist2" {
 			t.Errorf("Playlist2 should have been excluded but was found in result")
 		}
 	}
 
-	// Verify playlist1 and playlist3 are still present
 	found1, found3 := false, false
 	for _, pl := range result {
 		if pl.ID == "playlist1" {
@@ -114,7 +108,7 @@ func TestFilterExcludedPlaylists_SingleExclusion(t *testing.T) {
 func TestFilterExcludedPlaylists_MultipleExclusions(t *testing.T) {
 	app := &Application{
 		config: &config.Config{
-			Spotify: config.SpotifyConfig{
+			MusicSocial: config.MusicSocialConfig{
 				ExcludedPlaylistIDs: []string{"playlist1", "playlist3"},
 			},
 		},
@@ -133,14 +127,12 @@ func TestFilterExcludedPlaylists_MultipleExclusions(t *testing.T) {
 		t.Errorf("Expected 2 playlists, got %d", len(result))
 	}
 
-	// Verify the correct playlists remain
 	for _, pl := range result {
 		if pl.ID == "playlist1" || pl.ID == "playlist3" {
 			t.Errorf("Playlist %s should have been excluded but was found in result", pl.ID)
 		}
 	}
 
-	// Verify playlist2 and playlist4 are still present
 	found2, found4 := false, false
 	for _, pl := range result {
 		if pl.ID == "playlist2" {
@@ -161,7 +153,7 @@ func TestFilterExcludedPlaylists_MultipleExclusions(t *testing.T) {
 func TestFilterExcludedPlaylists_ExcludeNonexistent(t *testing.T) {
 	app := &Application{
 		config: &config.Config{
-			Spotify: config.SpotifyConfig{
+			MusicSocial: config.MusicSocialConfig{
 				ExcludedPlaylistIDs: []string{"nonexistent_playlist"},
 			},
 		},
@@ -174,7 +166,6 @@ func TestFilterExcludedPlaylists_ExcludeNonexistent(t *testing.T) {
 
 	result := app.filterExcludedPlaylists(playlists)
 
-	// All playlists should remain since the excluded ID doesn't match any
 	if len(result) != 2 {
 		t.Errorf("Expected 2 playlists, got %d", len(result))
 	}
@@ -183,7 +174,7 @@ func TestFilterExcludedPlaylists_ExcludeNonexistent(t *testing.T) {
 func TestFilterExcludedPlaylists_ExcludeAll(t *testing.T) {
 	app := &Application{
 		config: &config.Config{
-			Spotify: config.SpotifyConfig{
+			MusicSocial: config.MusicSocialConfig{
 				ExcludedPlaylistIDs: []string{"playlist1", "playlist2"},
 			},
 		},
@@ -204,7 +195,7 @@ func TestFilterExcludedPlaylists_ExcludeAll(t *testing.T) {
 func TestFilterExcludedPlaylists_EmptyInput(t *testing.T) {
 	app := &Application{
 		config: &config.Config{
-			Spotify: config.SpotifyConfig{
+			MusicSocial: config.MusicSocialConfig{
 				ExcludedPlaylistIDs: []string{"playlist1"},
 			},
 		},
