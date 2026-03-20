@@ -202,6 +202,9 @@ func TestInitializeDefaults(t *testing.T) {
 	if cfg.Plex.MaxRequestsPerSecond != 4 {
 		t.Errorf("Expected MaxRequestsPerSecond 4, got %v", cfg.Plex.MaxRequestsPerSecond)
 	}
+	if cfg.Plex.MatchConfidencePercent != DefaultMatchConfidencePercent {
+		t.Errorf("Expected MatchConfidencePercent %d, got %d", DefaultMatchConfidencePercent, cfg.Plex.MatchConfidencePercent)
+	}
 	if !cfg.Plex.InsecureSkipVerify {
 		t.Error("Expected InsecureSkipVerify true by default")
 	}
@@ -292,6 +295,53 @@ func TestApplyOverridesEmptyValues(t *testing.T) {
 
 	if cfg.Plex.URL != "" {
 		t.Errorf("Expected empty URL (unchanged), got '%s'", cfg.Plex.URL)
+	}
+}
+
+func TestParseMatchConfidencePercent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		raw  string
+		want int
+		fail bool
+	}{
+		{"80", 80, false},
+		{" 75% ", 75, false},
+		{"0", 0, false},
+		{"100", 100, false},
+		{"101", 0, true},
+		{"-1", 0, true},
+		{"abc", 0, true},
+		{"", 0, true},
+	}
+	for _, tt := range tests {
+		got, err := ParseMatchConfidencePercent(tt.raw)
+		if tt.fail {
+			if err == nil {
+				t.Errorf("ParseMatchConfidencePercent(%q): expected error", tt.raw)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("ParseMatchConfidencePercent(%q): %v", tt.raw, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("ParseMatchConfidencePercent(%q) = %d, want %d", tt.raw, got, tt.want)
+		}
+	}
+}
+
+func TestApplyOverridesMatchConfidencePercent(t *testing.T) {
+	cfg := &Config{}
+	cfg.initializeDefaults()
+	cfg.applyOverrides(map[string]string{"PLEXIFY_MATCH_CONFIDENCE_PERCENT": "65"})
+	if cfg.Plex.MatchConfidencePercent != 65 {
+		t.Fatalf("got %d", cfg.Plex.MatchConfidencePercent)
+	}
+	cfg.applyOverrides(map[string]string{"PLEXIFY_MATCH_CONFIDENCE_PERCENT": "not-a-number"})
+	if cfg.Plex.MatchConfidencePercent != 65 {
+		t.Fatalf("invalid override should not change value, got %d", cfg.Plex.MatchConfidencePercent)
 	}
 }
 

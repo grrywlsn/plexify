@@ -23,9 +23,6 @@ const (
 	// Plex API constants
 	PlexMusicTrackType = "10"
 
-	// Search confidence thresholds
-	MinConfidenceScore = 0.7
-
 	// HTTP timeouts
 	DefaultHTTPTimeout = 30 * time.Second
 
@@ -58,6 +55,8 @@ type Client struct {
 	dryRun                bool
 	skipFullLibrarySearch bool
 	exactMatchesOnly      bool
+	// matchConfidencePercent is the minimum combined match score (0–100) as a fraction in minMatchScore; nil means use config.DefaultMatchConfidencePercent (for tests using &Client{}).
+	matchConfidencePercent *int
 }
 
 // PlexTrack represents a track from Plex
@@ -154,19 +153,36 @@ func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
 		mc = 32
 	}
 
+	mp := cfg.Plex.MatchConfidencePercent
+	mpCopy := mp
 	return &Client{
-		baseURL:               cfg.Plex.URL,
-		token:                 cfg.Plex.Token,
-		sectionID:             cfg.Plex.LibrarySectionID,
-		serverID:              cfg.Plex.ServerID,
-		httpClient:            httpClient,
-		debug:                 false,
-		plexgoClient:          plexgoClient,
-		matchConcurrency:      mc,
-		dryRun:                cfg.Plex.DryRun,
-		skipFullLibrarySearch: cfg.Plex.SkipFullLibrarySearch,
-		exactMatchesOnly:      cfg.Plex.ExactMatchesOnly,
+		baseURL:                cfg.Plex.URL,
+		token:                  cfg.Plex.Token,
+		sectionID:              cfg.Plex.LibrarySectionID,
+		serverID:               cfg.Plex.ServerID,
+		httpClient:             httpClient,
+		debug:                  false,
+		plexgoClient:           plexgoClient,
+		matchConcurrency:       mc,
+		dryRun:                 cfg.Plex.DryRun,
+		skipFullLibrarySearch:  cfg.Plex.SkipFullLibrarySearch,
+		exactMatchesOnly:       cfg.Plex.ExactMatchesOnly,
+		matchConfidencePercent: &mpCopy,
 	}
+}
+
+func (c *Client) minMatchScore() float64 {
+	if c.matchConfidencePercent == nil {
+		return float64(config.DefaultMatchConfidencePercent) / 100.0
+	}
+	p := *c.matchConfidencePercent
+	if p < 0 {
+		return float64(config.DefaultMatchConfidencePercent) / 100.0
+	}
+	if p > 100 {
+		return 1.0
+	}
+	return float64(p) / 100.0
 }
 
 // SetDryRun toggles whether playlist mutations are applied (false = default).

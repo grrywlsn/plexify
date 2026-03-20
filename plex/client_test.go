@@ -13,13 +13,18 @@ import (
 	"github.com/grrywlsn/plexify/track"
 )
 
+func defaultMinMatchScore() float64 {
+	return (&Client{}).minMatchScore()
+}
+
 func TestNewClient(t *testing.T) {
 	cfg := &config.Config{
 		Plex: config.PlexConfig{
-			URL:              "http://test.plex.server:32400",
-			Token:            "test_token",
-			LibrarySectionID: 1,
-			ServerID:         "test_server_id",
+			URL:                    "http://test.plex.server:32400",
+			Token:                  "test_token",
+			LibrarySectionID:       1,
+			ServerID:               "test_server_id",
+			MatchConfidencePercent: config.DefaultMatchConfidencePercent,
 		},
 	}
 
@@ -337,8 +342,8 @@ func TestAccentMatchingScenario(t *testing.T) {
 	confidence := (accentSimilarity * 0.7) + (1.0 * 0.3) // Assuming perfect artist match
 	t.Logf("Confidence score: %.3f", confidence)
 
-	if confidence < 0.7 {
-		t.Errorf("Should match with confidence threshold: confidence=%.3f, threshold=0.7", confidence)
+	if confidence < defaultMinMatchScore() {
+		t.Errorf("Should match with confidence threshold: confidence=%.3f, threshold=%.3f", confidence, defaultMinMatchScore())
 	}
 
 	t.Logf("✅ Accent normalization successfully improves matching from %.3f to %.3f",
@@ -946,9 +951,9 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 		confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
 
 		// The confidence should be below the threshold for completely different songs
-		if confidence >= MinConfidenceScore {
+		if confidence >= defaultMinMatchScore() {
 			t.Errorf("Confidence should be below threshold (%f) for completely different songs, got %f",
-				MinConfidenceScore, confidence)
+				defaultMinMatchScore(), confidence)
 		}
 	})
 }
@@ -1421,9 +1426,9 @@ func TestSearchFlowSimulation(t *testing.T) {
 				result.Title, result.Artist, confidence)
 
 			// This should NOT happen - the confidence should be below threshold
-			if confidence >= MinConfidenceScore {
+			if confidence >= defaultMinMatchScore() {
 				t.Errorf("Confidence is above threshold (%f >= %f) for completely unrelated tracks",
-					confidence, MinConfidenceScore)
+					confidence, defaultMinMatchScore())
 			}
 		} else {
 			t.Logf("✅ Correctly found NO match - 'the lakes' is not in the library")
@@ -1553,9 +1558,9 @@ func TestSearchFlowSimulation(t *testing.T) {
 			t.Logf("⚠️  searchEntireLibrary found a match: '%s' by '%s' (confidence: %f)",
 				result.Title, result.Artist, confidence)
 
-			if confidence >= MinConfidenceScore {
+			if confidence >= defaultMinMatchScore() {
 				t.Errorf("❌ BUG: searchEntireLibrary returned a match above threshold (%f >= %f) for unrelated tracks",
-					confidence, MinConfidenceScore)
+					confidence, defaultMinMatchScore())
 				t.Logf("This explains why 'the lakes - bonus track' is matching to '%s' by '%s'",
 					result.Title, result.Artist)
 			} else {
@@ -1635,16 +1640,16 @@ func TestSearchFlowSimulation(t *testing.T) {
 					t.Logf("  Confidence: %f", confidence)
 
 					if tc.expected {
-						if confidence >= MinConfidenceScore {
+						if confidence >= defaultMinMatchScore() {
 							t.Logf("✅ Correctly matched (expected)")
 						} else {
 							t.Errorf("❌ Expected match but confidence too low (%f < %f)",
-								confidence, MinConfidenceScore)
+								confidence, defaultMinMatchScore())
 						}
 					} else {
-						if confidence >= MinConfidenceScore {
+						if confidence >= defaultMinMatchScore() {
 							t.Errorf("❌ High confidence (%f >= %f) for '%s' by '%s'",
-								confidence, MinConfidenceScore, tc.title, tc.artist)
+								confidence, defaultMinMatchScore(), tc.title, tc.artist)
 						} else {
 							t.Logf("✅ Correctly below threshold")
 						}
@@ -1804,10 +1809,10 @@ func TestTheLakesConfidenceCalculation(t *testing.T) {
 	confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
 
 	// This should be a very low confidence score
-	if confidence >= MinConfidenceScore {
-		t.Errorf("❌ Confidence too high: %.6f >= %.6f", confidence, MinConfidenceScore)
+	if confidence >= defaultMinMatchScore() {
+		t.Errorf("❌ Confidence too high: %.6f >= %.6f", confidence, defaultMinMatchScore())
 	} else {
-		t.Logf("✅ Correctly low confidence: %.6f < %.6f", confidence, MinConfidenceScore)
+		t.Logf("✅ Correctly low confidence: %.6f < %.6f", confidence, defaultMinMatchScore())
 	}
 
 	// Let's also test the individual similarity calculations
@@ -2153,7 +2158,7 @@ func TestConfidenceThresholdOptimization(t *testing.T) {
 	// Recommend optimal threshold
 	t.Logf("\nThreshold Recommendation:")
 	t.Logf("========================")
-	t.Logf("Current threshold: %f", MinConfidenceScore)
+	t.Logf("Current threshold: %f", defaultMinMatchScore())
 	t.Logf("Problematic match confidence: %f", confidence)
 
 	// Find the minimum threshold that prevents the problematic match
@@ -3150,7 +3155,7 @@ func TestJessieWareSpotlightSingleEditMatching(t *testing.T) {
 
 	// Test confidence calculation
 	confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
-	if confidence < MinConfidenceScore {
+	if confidence < defaultMinMatchScore() {
 		t.Errorf("Expected high confidence for suffix-removed match, got %f", confidence)
 	}
 	t.Logf("Confidence score: %f", confidence)
@@ -3376,7 +3381,8 @@ func TestGetItRightVariousArtistsScenario(t *testing.T) {
 }
 
 func TestGetItRightRealWorldScenario(t *testing.T) {
-	client := &Client{}
+	thresholdPct := 70 // combined score for this VA compilation case is below the default 80% floor
+	client := &Client{matchConfidencePercent: &thresholdPct}
 	client.SetDebug(true)
 
 	// Simulate the search results that would be returned by Plex
@@ -3779,11 +3785,11 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 		}
 
 		confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
-		t.Logf("Confidence: %.3f (threshold: %.3f)", confidence, MinConfidenceScore)
+		t.Logf("Confidence: %.3f (threshold: %.3f)", confidence, defaultMinMatchScore())
 
-		if confidence < MinConfidenceScore {
+		if confidence < defaultMinMatchScore() {
 			t.Errorf("Confidence (%.3f) should be >= threshold (%.3f)",
-				confidence, MinConfidenceScore)
+				confidence, defaultMinMatchScore())
 		}
 	})
 

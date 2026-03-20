@@ -117,6 +117,10 @@ See [4. Configuration](#4-configuration) for all variables.
 
 ### 4. Configuration
 
+Copy `env.template` to `.env` for a full annotated example. Values load from the process environment first, then `.env` in the working directory, then CLI flags (see below).
+
+#### Example `.env` (minimal)
+
 ```env
 # music-social (required)
 MUSIC_SOCIAL_URL=https://your-music-social.example.com
@@ -139,33 +143,39 @@ MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID=pl_skip_this
 
 # Optional Plex server id (auto-discovered if unset)
 PLEX_SERVER_ID=
-
-# Optional: Plex HTTPS — by default TLS certificate verification is skipped (LAN/self-signed). For strict verification:
-# PLEX_VERIFY_TLS=true
-# (Legacy: PLEX_INSECURE_SKIP_VERIFY=false forces verify; =true skips verify.)
-
-# Optional: parallel Plex track lookups while matching (1 = sequential, max 32)
-# PLEX_MATCH_CONCURRENCY=4
-
-# Optional: cap Plex HTTP traffic (requests per second; default 4, 0 = unlimited)
-# PLEX_MAX_REQUESTS_PER_SECOND=8
-# (All Plex HTTP calls share one limiter, so high PLEX_MATCH_CONCURRENCY mostly queues on the limit.)
-
-# Optional: dry-run — match and print playlist diff; do not create/clear/add on Plex
-# PLEXIFY_DRY_RUN=true
-
-# Optional: fast search — skip full-library scan; use Plex /search only (may miss hard matches)
-# PLEXIFY_FAST_SEARCH=true
-# (alias: PLEX_SKIP_FULL_LIBRARY_SEARCH=true)
-
-# Optional: exact-matches-only — only the raw title/artist search strategy (no brackets/featuring/etc.); no full-library scan. Use with dry-run to spot metadata or library gaps quickly.
-# PLEXIFY_EXACT_MATCHES_ONLY=true
 ```
+
+#### Environment variable reference
+
+Boolean variables treat `1`, `true`, `yes`, and `on` (case-insensitive) as true; anything else is false.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MUSIC_SOCIAL_URL` | _(required)_ | HTTPS base URL of the music-social instance (no trailing slash required). |
+| `MUSIC_SOCIAL_USERNAME` | empty | List all **public** playlists for this user. At least one of this or `MUSIC_SOCIAL_PLAYLIST_ID` is required. |
+| `MUSIC_SOCIAL_PLAYLIST_ID` | empty | Comma-separated playlist IDs (can combine with username). |
+| `MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID` | empty | Comma-separated playlist IDs to skip. |
+| `PLEX_URL` | _(required)_ | Plex server base URL (e.g. `http://host:32400`). |
+| `PLEX_TOKEN` | _(required)_ | Plex authentication token (`X-Plex-Token`). |
+| `PLEX_LIBRARY_SECTION_ID` | _(required)_ | Numeric music library section ID. |
+| `PLEX_SERVER_ID` | empty | Server machine identifier; auto-discovered if unset. |
+| `PLEX_INSECURE_SKIP_VERIFY` | _(unset → skip verify)_ | If **set**, truthy values skip TLS certificate verification; falsy values require verification. When **unset**, the default is to skip verify (LAN/self-signed friendly). |
+| `PLEX_VERIFY_TLS` | off | If true, verify HTTPS certificates (overrides insecure default). |
+| `PLEX_MATCH_CONCURRENCY` | `1` | Parallel Plex track lookups during matching (clamped to 1–32). |
+| `PLEX_MAX_REQUESTS_PER_SECOND` | `4` | Token-bucket cap on Plex HTTP requests per second; `0` = unlimited. |
+| `PLEXIFY_MATCH_CONFIDENCE_PERCENT` | `80` | Minimum combined title/artist match score to accept a track (integer 0–100, optional `%` suffix). |
+| `PLEXIFY_DRY_RUN` | off | Match and show diff only; do not create/clear/add playlists on Plex. |
+| `DRY_RUN` | off | Alias for `PLEXIFY_DRY_RUN`. |
+| `PLEXIFY_FAST_SEARCH` | off | Skip full-library scan (`/library/sections/{id}/all`); use indexed `/search` only. |
+| `PLEX_SKIP_FULL_LIBRARY_SEARCH` | off | Alias for `PLEXIFY_FAST_SEARCH`. |
+| `PLEXIFY_EXACT_MATCHES_ONLY` | off | Only the first search strategy (raw title/artist); no normalizations and no full-library scan. |
+| `NO_COLOR` | _(unset)_ | If set to any non-empty value, playlist diff output disables ANSI color when stdout is a terminal. |
 
 Environment variables, a `.env` file, or flags (same names, e.g. `-MUSIC_SOCIAL_URL=...`) are all supported.
 
-Additional CLI-only flags:
+#### CLI-only flags
 
+- `-DEBUG` — verbose matching logs (similarities and scores as rounded percents)
 - `-dry-run` — same as `PLEXIFY_DRY_RUN=true`
 - `-plex-match-concurrency=N` — overrides `PLEX_MATCH_CONCURRENCY` (1–32)
 - `-plex-insecure-tls` — same as `PLEX_INSECURE_SKIP_VERIFY=true` (usually redundant; skipping verify is already the default)
@@ -173,6 +183,7 @@ Additional CLI-only flags:
 - `-plex-fast-search` — same as `PLEXIFY_FAST_SEARCH=true` (no `/all` fallback)
 - `-exact-matches-only` — same as `PLEXIFY_EXACT_MATCHES_ONLY=true` (first search strategy only; no `/all`)
 - `-plex-max-rps=N` — overrides `PLEX_MAX_REQUESTS_PER_SECOND` (`0` = unlimited)
+- `-version` — print version and exit
 
 ```bash
 ./plexify \
@@ -401,41 +412,43 @@ Please copy/paste them **exactly** as they appear in each source, so that the ma
 
 ### Debug mode
 
-You can enable debug logs (`DEBUG=true`) to see the rules being evaluated and how they are scored.
+You can enable debug logs with the `-DEBUG` command-line flag to see the rules being evaluated and how they are scored (similarities and combined scores are shown as rounded whole percents).
 
 It should help make it clear why one song wins over another, and can be included when raising the issues above.
 
+The excerpt below assumes `PLEXIFY_MATCH_CONFIDENCE_PERCENT=70`: the winning combined score is **73%**, which would be rejected with the default **80%** floor (see [Configuration](#4-configuration)).
+
 ```
-2025/08/04 08:52:40 ⏭️  FindBestMatch: skipping 'Can’t Get You Out of My Head (Deluxe’s Dirty Dub)' by 'Kylie Minogue' (score: 0.361, current best: 0.385)
+2025/08/04 08:52:40 ⏭️  FindBestMatch: skipping 'Can’t Get You Out of My Head (Deluxe’s Dirty Dub)' by 'Kylie Minogue' (score: 36%, current best: 39%)
 2025/08/04 08:52:40 🔍 FindBestMatch: 'Out Of My Head' by 'Loote' -> 'Can't Get You Out of My Head' by 'Kylie Minogue'
-2025/08/04 08:52:40    Original title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    Original artist similarity: 0.115 ('loote' vs 'kylie minogue')
-2025/08/04 08:52:40    Clean title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    Featuring-removed title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    Normalized title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    'With'-removed title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    Suffix-removed title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    Punctuation-normalized title similarity: 0.500 ('out of my head' vs 'can't get you out of my head')
-2025/08/04 08:52:40    Final title similarity: 0.500
-2025/08/04 08:52:40    Final artist similarity: 0.115
-2025/08/04 08:52:40    Combined score: 0.385 (0.500 * 0.7 + 0.115 * 0.3)
-2025/08/04 08:52:40 ⏭️  FindBestMatch: skipping 'Can't Get You Out of My Head' by 'Kylie Minogue' (score: 0.385, current best: 0.385)
+2025/08/04 08:52:40    Original title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Original artist similarity: 12% ('loote' vs 'kylie minogue')
+2025/08/04 08:52:40    Clean title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Featuring-removed title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Normalized title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    'With'-removed title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Suffix-removed title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Punctuation-normalized title similarity: 50% ('out of my head' vs 'can't get you out of my head')
+2025/08/04 08:52:40    Final title similarity: 50%
+2025/08/04 08:52:40    Final artist similarity: 12%
+2025/08/04 08:52:40    Combined score: 38% (50% * 0.7 + 12% * 0.3)
+2025/08/04 08:52:40 ⏭️  FindBestMatch: skipping 'Can't Get You Out of My Head' by 'Kylie Minogue' (score: 38%, current best: 38%)
 2025/08/04 08:52:40 🔍 FindBestMatch: 'Out Of My Head' by 'Loote' -> 'Out of My Head' by 'Various Artists'
-2025/08/04 08:52:40    Original title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    Original artist similarity: 0.100 ('loote' vs 'various artists')
-2025/08/04 08:52:40    Clean title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    Featuring-removed title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    Normalized title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    'With'-removed title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    Suffix-removed title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    Punctuation-normalized title similarity: 1.000 ('out of my head' vs 'out of my head')
-2025/08/04 08:52:40    Final title similarity: 1.000
-2025/08/04 08:52:40    Final artist similarity: 0.100
-2025/08/04 08:52:40    Combined score: 0.730 (1.000 * 0.7 + 0.100 * 0.3)
-2025/08/04 08:52:40 🎵 FindBestMatch: allowing 'Various Artists' compilation match 'Out of My Head' by 'Various Artists' (title: 1.000 > 0.9, artist: 0.100 < 0.3 but is Various Artists)
-2025/08/04 08:52:40 🎵 FindBestMatch: allowing 'Various Artists' compilation match 'Out of My Head' by 'Various Artists' (title: 1.000 > 0.7, artist: 0.100 < 0.2 but is Various Artists)
-2025/08/04 08:52:40 📈 FindBestMatch: new best match 'Out of My Head' by 'Various Artists' (score: 0.730 > 0.385, title: 1.000, artist: 0.100)
-2025/08/04 08:52:40 ✅ FindBestMatch: FINAL RESULT - returning match 'Out of My Head' by 'Various Artists' (score: 0.730 >= 0.700) for search 'Out Of My Head' by 'Loote'
+2025/08/04 08:52:40    Original title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Original artist similarity: 10% ('loote' vs 'various artists')
+2025/08/04 08:52:40    Clean title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Featuring-removed title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Normalized title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    'With'-removed title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Suffix-removed title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Punctuation-normalized title similarity: 100% ('out of my head' vs 'out of my head')
+2025/08/04 08:52:40    Final title similarity: 100%
+2025/08/04 08:52:40    Final artist similarity: 10%
+2025/08/04 08:52:40    Combined score: 73% (100% * 0.7 + 10% * 0.3)
+2025/08/04 08:52:40 🎵 FindBestMatch: allowing 'Various Artists' compilation match 'Out of My Head' by 'Various Artists' (title: 100% > 90%, artist: 10% < 30% but is Various Artists)
+2025/08/04 08:52:40 🎵 FindBestMatch: allowing 'Various Artists' compilation match 'Out of My Head' by 'Various Artists' (title: 100% > 70%, artist: 10% < 20% but is Various Artists)
+2025/08/04 08:52:40 📈 FindBestMatch: new best match 'Out of My Head' by 'Various Artists' (score: 73% > 38%, title: 100%, artist: 10%)
+2025/08/04 08:52:40 ✅ FindBestMatch: FINAL RESULT - returning match 'Out of My Head' by 'Various Artists' (score: 73% >= 70%) for search 'Out Of My Head' by 'Loote'
 2025/08/04 08:52:40 ✅ searchByTitle: found match 'Out of My Head' by 'Various Artists'
 2025/08/04 08:52:40 ✅ SearchTrack: found match 'Out of My Head' by 'Various Artists' using exact title/artist
 ```
