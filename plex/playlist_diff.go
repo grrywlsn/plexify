@@ -187,13 +187,27 @@ func coalesceRawToDisplay(raw []rawDiffItem) []PlaylistDiffOp {
 	return out
 }
 
-// FprintPlaylistDiff writes a git-style colored summary to w.
+// FprintPlaylistDiff writes a git-style colored summary with full-width section borders (standalone block).
 func FprintPlaylistDiff(w io.Writer, view PlaylistDiffView, useColor bool) {
-	sep := cliutil.RepeatChar("=", cliutil.SectionWidth)
+	fprintPlaylistDiff(w, view, useColor, true)
+}
+
+// FprintPlaylistDiffEmbedded writes the same lines under a subsection header (for use inside SUMMARY).
+func FprintPlaylistDiffEmbedded(w io.Writer, view PlaylistDiffView, useColor bool) {
+	fprintPlaylistDiff(w, view, useColor, false)
+}
+
+func fprintPlaylistDiff(w io.Writer, view PlaylistDiffView, useColor, outerBanner bool) {
+	eq := cliutil.RepeatChar("=", cliutil.SectionWidth)
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, sep)
-	fmt.Fprintf(w, "PLAYLIST CHANGES — %s\n", view.PlaylistTitle)
-	fmt.Fprintln(w, sep)
+	if outerBanner {
+		fmt.Fprintln(w, eq)
+		fmt.Fprintf(w, "PLAYLIST CHANGES — %s\n", view.PlaylistTitle)
+		fmt.Fprintln(w, eq)
+	} else {
+		fmt.Fprintf(w, "PLAYLIST CHANGES — %s\n", view.PlaylistTitle)
+		fmt.Fprintln(w, cliutil.RepeatChar("-", cliutil.SectionWidth))
+	}
 
 	if len(view.Ops) == 0 {
 		fmt.Fprintln(w, "(no changes — playlist already matches desired track list and order)")

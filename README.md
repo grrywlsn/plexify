@@ -17,11 +17,11 @@ Run it as a CLI or on a schedule (e.g. cron). The catalog is read from your musi
 - Match source tracks to your Plex music library [using the same rules as before](#matching-order-and-rules)
 - Create or update Plex playlists; playlist summary includes a line like `synced from music-social: <url>`
 - **Stateless** — no on-disk sync state; safe for ephemeral containers and cron without volumes
-- **Playlist change preview** — before rewriting a Plex playlist, prints a git-style diff (adds / removals / substitutions) comparing current Plex items to the desired list; then sync runs as before
+- **Playlist change preview** — before rewriting a Plex playlist, prints a git-style diff (adds / removals / substitutions) comparing current Plex items to the desired list under **SUMMARY**; then sync runs as before
 
 ### Playlist change preview
 
-After matching tracks to your library, Plexify fetches the existing playlist’s items (if the playlist already exists), compares **ordered** `ratingKey` lists with an LCS-based diff, and prints a **PLAYLIST CHANGES** block to stdout:
+After matching tracks to your library, Plexify fetches the existing playlist’s items (if the playlist already exists), compares **ordered** `ratingKey` lists with an LCS-based diff, and prints a **PLAYLIST CHANGES** subsection inside **SUMMARY** (before **MISSING TRACKS SUMMARY** when there are gaps):
 
 - Green `+`: tracks to add (music-social source line + matched Plex line + confidence)
 - Red `-`: tracks to remove (Plex line only)

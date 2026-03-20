@@ -222,11 +222,7 @@ func (app *Application) processPlaylist(ctx context.Context, meta PlaylistMeta, 
 		return fmt.Errorf("failed to match songs to Plex: %w", err)
 	}
 
-	if diffView.PlaylistTitle != "" {
-		plex.FprintPlaylistDiff(os.Stdout, diffView, plex.StdoutSupportsColor())
-	}
-
-	app.displayMatchingResults(matchResults, songs, playlist)
+	app.displayMatchingResults(matchResults, songs, playlist, diffView)
 
 	return nil
 }
@@ -243,7 +239,7 @@ func (app *Application) displaySongs(songs []track.Track) {
 	fmt.Printf("Successfully fetched %d songs from music-social playlist\n", len(songs))
 }
 
-func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist) {
+func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {
 	fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
 	fmt.Println("MATCHING RESULTS")
 	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
@@ -271,14 +267,14 @@ func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, 
 		fmt.Println()
 	}
 
-	app.displaySummary(songs, titleMatches, noMatches, playlist)
+	app.displaySummary(songs, titleMatches, noMatches, playlist, diffView)
 
 	if len(missingTracks) > 0 {
 		app.displayMissingTracksSummary(missingTracks)
 	}
 }
 
-func (app *Application) displaySummary(songs []track.Track, titleMatches, noMatches int, playlist *plex.PlexPlaylist) {
+func (app *Application) displaySummary(songs []track.Track, titleMatches, noMatches int, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {
 	fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
 	fmt.Println("SUMMARY")
 	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
@@ -297,6 +293,10 @@ func (app *Application) displaySummary(songs []track.Track, titleMatches, noMatc
 		}
 	} else {
 		fmt.Println("\n❌ No matches found")
+	}
+
+	if diffView.PlaylistTitle != "" {
+		plex.FprintPlaylistDiffEmbedded(os.Stdout, diffView, plex.StdoutSupportsColor())
 	}
 }
 
