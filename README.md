@@ -1,10 +1,10 @@
 # Plexify
 
-A tool to sync playlists from **[music-social.com](https://music-social.com)** into a Plex music library. [music-social.com](https://music-social.com) is a third-party service many Plexify users already use; it can aggregate playlists from sources such as Spotify and Apple Music.
+A tool to sync playlists from **[music-social.com](https://music-social.com)** into a Plex music library. [music-social.com](https://music-social.com) is a third-party service; it can aggregate playlists from sources such as Spotify and Apple Music.
 
-Run it as a CLI or on a schedule (e.g. cron). By default Plexify uses **https://music-social.com**. You need Plex credentials plus a music-social.com username or playlist id(s); set `MUSIC_SOCIAL_URL` only if you use another compatible API base (e.g. self-hosted).
+Run it as a CLI or on a schedule (e.g. cron). You need Plex credentials plus a music-social.com username or playlist id(s).
 
-**Stateless:** Each run is independent. Plexify does not write a local database, cache file, or sync manifest. It reads the current source playlists from the configured API, matches against Plex, and updates Plex playlists over the API. The only durable “state” is whatever Plex already stores for those playlists. Optional `.env` in the working directory is just configuration input (same as environment variables).
+**Stateless:** Each run is independent. Plexify does not write a local database, cache file, or sync manifest. It reads the current source playlists from music-social.com, matches against the Plex server library, and updates Plex playlists over the API. The only durable “state” is whatever Plex already stores for those playlists. Optional `.env` in the working directory is just configuration input (same as environment variables).
 
 > [!IMPORTANT]
 > **Public vs unlisted:** `MUSIC_SOCIAL_USERNAME` only discovers playlists that are **public** on the service (the same set as `GET /users/{username}/playlists.json`). **Unlisted** playlists are not listed there; add their ids explicitly with `MUSIC_SOCIAL_PLAYLIST_ID`.
@@ -14,7 +14,7 @@ Run it as a CLI or on a schedule (e.g. cron). By default Plexify uses **https://
 - Fetch tracks from music-social.com playlists
 - Supply a **username** (all public playlists), **playlist id(s)**, or both (merged and deduplicated)
 - Use track metadata from the source API (title, artist, album, duration; MusicBrainz ISRC/MBID when present)
-- Match source tracks to your Plex music library [using the same rules outlined here](#matching-order-and-rules)
+- Match source tracks to your Plex music library [using the rules outlined here](#matching-order-and-rules)
 - Create or update Plex playlists; playlist summary includes a line like `synced from music-social.com: <url>`
 - **Stateless** — no on-disk sync state; safe for ephemeral containers and cron without volumes
 - **Playlist change preview** — before rewriting a Plex playlist, prints a git-style diff (adds / removals / substitutions) comparing current Plex items to the desired list under **SUMMARY**; then sync runs as before
@@ -41,7 +41,7 @@ Plexify is **authoritative** for each source playlist: it **creates** a Plex pla
 
 ## Prerequisites
 
-- Playlists on [music-social.com](https://music-social.com) (Plexify’s default API base) or on another compatible host you configure with `MUSIC_SOCIAL_URL` — e.g. your music-social.com username for discovery, or public playlist id(s) you copy from the site
+- Playlists on [music-social.com](https://music-social.com)
 - Plex Media Server with a music library and an `X-Plex-Token`
 
 ## Quick Start
