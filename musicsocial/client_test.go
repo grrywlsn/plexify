@@ -43,7 +43,10 @@ func TestClient_GetPlaylist(t *testing.T) {
 			"updated_at": "2025-01-01T00:00:00Z",
 			"tracks": []map[string]any{
 				{"position": 1, "title": "Song", "artist": "Artist", "duration_ms": 180000,
-					"musicbrainz": map[string]any{"track_gid": "mbid", "isrcs": []string{"USXXX123"}}},
+					"musicbrainz": map[string]any{
+						"track_gid": "mbid", "release_group_gid": "rg-mbid",
+						"isrcs": []string{"USXXX123"},
+					}},
 			},
 		}
 		_ = json.NewEncoder(w).Encode(doc)
@@ -62,8 +65,54 @@ func TestClient_GetPlaylist(t *testing.T) {
 		t.Fatalf("unexpected playlist: %+v", pl)
 	}
 	tr := pl.Tracks[0]
-	if tr.Name != "Song" || tr.Artist != "Artist" || tr.MusicBrainzID != "mbid" || tr.ISRC != "USXXX123" {
+	if tr.Name != "Song" || tr.Artist != "Artist" || tr.MusicBrainzID != "mbid" ||
+		tr.MusicBrainzReleaseGroupID != "rg-mbid" || tr.ISRC != "USXXX123" {
 		t.Fatalf("unexpected track: %+v", tr)
+	}
+}
+
+func TestClient_GetPlaylist_streamingAlbums(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/playlist/pl2.json" {
+			http.NotFound(w, r)
+			return
+		}
+		doc := map[string]any{
+			"id": "pl2", "title": "Mix", "owner": "bob", "track_count": 2,
+			"updated_at": "2025-01-01T00:00:00Z",
+			"tracks": []map[string]any{
+				{
+					"position": 1, "title": "A", "artist": "Art",
+					"spotify": map[string]any{
+						"track_uri": "spotify:track:xyz", "album_uri": "spotify:album:albumSpotify",
+					},
+				},
+				{
+					"position": 2, "title": "B", "artist": "Art",
+					"apple_music": map[string]any{"album_id": "1630768988"},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(doc)
+	}))
+	defer ts.Close()
+
+	c, err := NewClient(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl, err := c.GetPlaylist("pl2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pl.Tracks) != 2 {
+		t.Fatalf("want 2 tracks, got %d", len(pl.Tracks))
+	}
+	if pl.Tracks[0].SpotifyAlbumURI != "spotify:album:albumSpotify" || pl.Tracks[0].AppleMusicAlbumID != "" {
+		t.Fatalf("track 0: %+v", pl.Tracks[0])
+	}
+	if pl.Tracks[1].SpotifyAlbumURI != "" || pl.Tracks[1].AppleMusicAlbumID != "1630768988" {
+		t.Fatalf("track 1: %+v", pl.Tracks[1])
 	}
 }
 

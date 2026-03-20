@@ -282,16 +282,17 @@ Tracks not found in Plex library (5 total):
 --------------------------------------------------------------------------------
   1. Diplo - Get It Right
      ISRC: (not available)
+     Add to MusicBrainz: https://harmony.pulsewidth.org.uk/release?url=…
 
   2. Some Artist - Some Song
      ISRC: USRC12345678
-     MusicBrainz ID: 12345678-1234-1234-1234-123456789012 (https://musicbrainz.org/recording/12345678-1234-1234-1234-123456789012)
+     MusicBrainz release group: 89f112d4-908e-4f9c-90eb-3fc339f174c9 - https://musicbrainz.org/release-group/89f112d4-908e-4f9c-90eb-3fc339f174c9
 
   3. Another Artist - Another Song
      ISRC: (not available)
 ```
 
-**Note:** The missing-tracks section lists ISRC when known and a MusicBrainz recording link when the source API supplied a MBID for that track.
+**Note:** The missing-tracks section lists ISRC when known. When the source API includes `musicbrainz.release_group_gid`, a **MusicBrainz release group** line links to that release group; otherwise, when only a recording MBID is present, **MusicBrainz ID** links to the recording. When there is **no** MBID but the API includes a **Spotify album** (`spotify.album_uri`) or **Apple Music album id** (`apple_music.album_id`), an **Add to MusicBrainz** line links to [Harmony](https://harmony.pulsewidth.org.uk/) in the same form as music-social’s admin (Spotify album preferred over Apple when both are present; Apple URLs use the `us` storefront).
 
 ## Matching Order and Rules
 
