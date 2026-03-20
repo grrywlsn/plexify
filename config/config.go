@@ -93,17 +93,17 @@ func (c *Config) initializeDefaults() {
 	}
 
 	c.Plex = PlexConfig{
-		URL:                   "",
-		Token:                 "",
-		LibrarySectionID:      0,
-		ServerID:              "",
-		InsecureSkipVerify:    true,
-		MatchConcurrency:      1,
-		DryRun:                false,
-		SkipFullLibrarySearch: false,
-		ExactMatchesOnly:         false,
-		MaxRequestsPerSecond:     4,
-		MatchConfidencePercent:   DefaultMatchConfidencePercent,
+		URL:                    "",
+		Token:                  "",
+		LibrarySectionID:       0,
+		ServerID:               "",
+		InsecureSkipVerify:     true,
+		MatchConcurrency:       1,
+		DryRun:                 false,
+		SkipFullLibrarySearch:  false,
+		ExactMatchesOnly:       false,
+		MaxRequestsPerSecond:   4,
+		MatchConfidencePercent: DefaultMatchConfidencePercent,
 	}
 }
 
