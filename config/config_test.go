@@ -7,7 +7,6 @@ import (
 )
 
 func TestConfigValidation(t *testing.T) {
-	// Test that validation fails when required fields are missing
 	cfg := &Config{}
 
 	err := cfg.validate()
@@ -15,21 +14,18 @@ func TestConfigValidation(t *testing.T) {
 		t.Error("Expected validation to fail with empty config")
 	}
 
-	// Check that error message includes helpful information
 	errorMsg := err.Error()
-	if !strings.Contains(errorMsg, "SPOTIFY_CLIENT_ID") {
-		t.Error("Expected error message to mention SPOTIFY_CLIENT_ID")
+	if !strings.Contains(errorMsg, "MUSIC_SOCIAL_URL") {
+		t.Error("Expected error message to mention MUSIC_SOCIAL_URL")
 	}
 	if !strings.Contains(errorMsg, "PLEX_URL") {
 		t.Error("Expected error message to mention PLEX_URL")
 	}
 
-	// Test valid configuration with playlist IDs
 	cfg = &Config{
-		Spotify: SpotifyConfig{
-			ClientID:     "test_client_id",
-			ClientSecret: "test_client_secret",
-			PlaylistIDs:  []string{"test_playlist_id"},
+		MusicSocial: MusicSocialConfig{
+			BaseURL:     "https://music.example.com",
+			PlaylistIDs: []string{"pl_abc"},
 		},
 		Plex: PlexConfig{
 			URL:              "http://test.plex.server:32400",
@@ -43,47 +39,34 @@ func TestConfigValidation(t *testing.T) {
 		t.Errorf("Expected no validation error, got %v", err)
 	}
 
-	// Test valid configuration with username
-	cfg.Spotify.PlaylistIDs = []string{}
-	cfg.Spotify.Username = "test_username"
+	cfg.MusicSocial.PlaylistIDs = []string{}
+	cfg.MusicSocial.Username = "user"
 	err = cfg.validate()
 	if err != nil {
 		t.Errorf("Expected no validation error with username, got %v", err)
 	}
 
-	// Test missing Spotify ClientID
-	cfg.Spotify.ClientID = ""
+	cfg.MusicSocial.BaseURL = ""
 	err = cfg.validate()
 	if err == nil {
-		t.Error("Expected validation error for missing ClientID")
+		t.Error("Expected validation error for missing base URL")
 	}
 
-	// Test missing Spotify ClientSecret
-	cfg.Spotify.ClientID = "test_client_id"
-	cfg.Spotify.ClientSecret = ""
-	err = cfg.validate()
-	if err == nil {
-		t.Error("Expected validation error for missing ClientSecret")
-	}
-
-	// Test missing playlist source (both username and playlist IDs)
-	cfg.Spotify.ClientSecret = "test_client_secret"
-	cfg.Spotify.PlaylistIDs = []string{}
-	cfg.Spotify.Username = ""
+	cfg.MusicSocial.BaseURL = "https://music.example.com"
+	cfg.MusicSocial.Username = ""
+	cfg.MusicSocial.PlaylistIDs = []string{}
 	err = cfg.validate()
 	if err == nil {
 		t.Error("Expected validation error for missing playlist source")
 	}
 
-	// Test missing Plex URL
-	cfg.Spotify.Username = "test_username"
+	cfg.MusicSocial.Username = "user"
 	cfg.Plex.URL = ""
 	err = cfg.validate()
 	if err == nil {
 		t.Error("Expected validation error for missing Plex URL")
 	}
 
-	// Test missing Plex Token
 	cfg.Plex.URL = "http://test.plex.server:32400"
 	cfg.Plex.Token = ""
 	err = cfg.validate()
@@ -91,7 +74,6 @@ func TestConfigValidation(t *testing.T) {
 		t.Error("Expected validation error for missing Plex Token")
 	}
 
-	// Test missing Plex LibrarySectionID
 	cfg.Plex.Token = "test_token"
 	cfg.Plex.LibrarySectionID = 0
 	err = cfg.validate()
@@ -101,37 +83,30 @@ func TestConfigValidation(t *testing.T) {
 }
 
 func TestConfigHierarchy(t *testing.T) {
-	// Test the configuration hierarchy: defaults -> OS env -> .env -> CLI flags
-
-	// Set up required environment variables for validation
-	os.Setenv("SPOTIFY_CLIENT_ID", "test_client_id")
-	os.Setenv("SPOTIFY_CLIENT_SECRET", "test_client_secret")
+	os.Setenv("MUSIC_SOCIAL_URL", "https://env-music.example.com")
 	os.Setenv("PLEX_URL", "http://test:32400")
 	os.Setenv("PLEX_TOKEN", "test_token")
 	os.Setenv("PLEX_LIBRARY_SECTION_ID", "1")
-	os.Setenv("SPOTIFY_USERNAME", "env_user")
+	os.Setenv("MUSIC_SOCIAL_USERNAME", "env_user")
 	defer func() {
-		os.Unsetenv("SPOTIFY_CLIENT_ID")
-		os.Unsetenv("SPOTIFY_CLIENT_SECRET")
+		os.Unsetenv("MUSIC_SOCIAL_URL")
 		os.Unsetenv("PLEX_URL")
 		os.Unsetenv("PLEX_TOKEN")
 		os.Unsetenv("PLEX_LIBRARY_SECTION_ID")
-		os.Unsetenv("SPOTIFY_USERNAME")
+		os.Unsetenv("MUSIC_SOCIAL_USERNAME")
 	}()
 
-	// Load base config (should use env var)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	if cfg.Spotify.Username != "env_user" {
-		t.Errorf("Expected username 'env_user', got '%s'", cfg.Spotify.Username)
+	if cfg.MusicSocial.Username != "env_user" {
+		t.Errorf("Expected username 'env_user', got '%s'", cfg.MusicSocial.Username)
 	}
 
-	// Test CLI override
 	overrides := map[string]string{
-		"SPOTIFY_USERNAME": "cli_user",
+		"MUSIC_SOCIAL_USERNAME": "cli_user",
 	}
 
 	cfgWithOverrides, err := LoadWithOverrides(overrides)
@@ -139,13 +114,12 @@ func TestConfigHierarchy(t *testing.T) {
 		t.Fatalf("Failed to load config with overrides: %v", err)
 	}
 
-	if cfgWithOverrides.Spotify.Username != "cli_user" {
-		t.Errorf("Expected username 'cli_user' after CLI override, got '%s'", cfgWithOverrides.Spotify.Username)
+	if cfgWithOverrides.MusicSocial.Username != "cli_user" {
+		t.Errorf("Expected username 'cli_user' after CLI override, got '%s'", cfgWithOverrides.MusicSocial.Username)
 	}
 
-	// Test multiple overrides
 	multipleOverrides := map[string]string{
-		"SPOTIFY_USERNAME":        "cli_user2",
+		"MUSIC_SOCIAL_USERNAME":   "cli_user2",
 		"PLEX_LIBRARY_SECTION_ID": "5",
 		"PLEX_URL":                "http://test2:32400",
 	}
@@ -155,8 +129,8 @@ func TestConfigHierarchy(t *testing.T) {
 		t.Fatalf("Failed to load config with overrides: %v", err)
 	}
 
-	if cfgMultiple.Spotify.Username != "cli_user2" {
-		t.Errorf("Expected username 'cli_user2', got '%s'", cfgMultiple.Spotify.Username)
+	if cfgMultiple.MusicSocial.Username != "cli_user2" {
+		t.Errorf("Expected username 'cli_user2', got '%s'", cfgMultiple.MusicSocial.Username)
 	}
 
 	if cfgMultiple.Plex.LibrarySectionID != 5 {
@@ -170,7 +144,7 @@ func TestConfigHierarchy(t *testing.T) {
 
 func TestApplyOverrides(t *testing.T) {
 	cfg := &Config{
-		Spotify: SpotifyConfig{
+		MusicSocial: MusicSocialConfig{
 			Username: "original_user",
 		},
 		Plex: PlexConfig{
@@ -179,15 +153,15 @@ func TestApplyOverrides(t *testing.T) {
 	}
 
 	overrides := map[string]string{
-		"SPOTIFY_USERNAME":        "new_user",
+		"MUSIC_SOCIAL_USERNAME":   "new_user",
 		"PLEX_LIBRARY_SECTION_ID": "10",
 		"PLEX_URL":                "http://override:32400",
 	}
 
 	cfg.applyOverrides(overrides)
 
-	if cfg.Spotify.Username != "new_user" {
-		t.Errorf("Expected username 'new_user', got '%s'", cfg.Spotify.Username)
+	if cfg.MusicSocial.Username != "new_user" {
+		t.Errorf("Expected username 'new_user', got '%s'", cfg.MusicSocial.Username)
 	}
 
 	if cfg.Plex.LibrarySectionID != 10 {
@@ -203,21 +177,14 @@ func TestInitializeDefaults(t *testing.T) {
 	cfg := &Config{}
 	cfg.initializeDefaults()
 
-	// Test that defaults are set correctly
-	if cfg.Spotify.ClientID != "" {
-		t.Errorf("Expected empty ClientID, got '%s'", cfg.Spotify.ClientID)
+	if cfg.MusicSocial.BaseURL != "" {
+		t.Errorf("Expected empty BaseURL, got '%s'", cfg.MusicSocial.BaseURL)
 	}
-	if cfg.Spotify.ClientSecret != "" {
-		t.Errorf("Expected empty ClientSecret, got '%s'", cfg.Spotify.ClientSecret)
+	if cfg.MusicSocial.Username != "" {
+		t.Errorf("Expected empty Username, got '%s'", cfg.MusicSocial.Username)
 	}
-	if cfg.Spotify.RedirectURI != "http://localhost:8080/callback" {
-		t.Errorf("Expected default RedirectURI, got '%s'", cfg.Spotify.RedirectURI)
-	}
-	if cfg.Spotify.Username != "" {
-		t.Errorf("Expected empty Username, got '%s'", cfg.Spotify.Username)
-	}
-	if cfg.Spotify.PlaylistIDs != nil {
-		t.Errorf("Expected nil PlaylistIDs, got %v", cfg.Spotify.PlaylistIDs)
+	if cfg.MusicSocial.PlaylistIDs != nil {
+		t.Errorf("Expected nil PlaylistIDs, got %v", cfg.MusicSocial.PlaylistIDs)
 	}
 
 	if cfg.Plex.URL != "" {
@@ -232,44 +199,74 @@ func TestInitializeDefaults(t *testing.T) {
 	if cfg.Plex.ServerID != "" {
 		t.Errorf("Expected empty ServerID, got '%s'", cfg.Plex.ServerID)
 	}
+	if cfg.Plex.MaxRequestsPerSecond != 4 {
+		t.Errorf("Expected MaxRequestsPerSecond 4, got %v", cfg.Plex.MaxRequestsPerSecond)
+	}
+	if !cfg.Plex.InsecureSkipVerify {
+		t.Error("Expected InsecureSkipVerify true by default")
+	}
 }
 
 func TestLoadFromOSEnv(t *testing.T) {
 	cfg := &Config{}
 	cfg.initializeDefaults()
 
-	// Set some environment variables
-	os.Setenv("SPOTIFY_CLIENT_ID", "test_client_id")
-	os.Setenv("SPOTIFY_USERNAME", "test_user")
+	os.Setenv("MUSIC_SOCIAL_URL", "https://ms.example.com")
+	os.Setenv("MUSIC_SOCIAL_USERNAME", "test_user")
 	os.Setenv("PLEX_URL", "http://test:32400")
 	defer func() {
-		os.Unsetenv("SPOTIFY_CLIENT_ID")
-		os.Unsetenv("SPOTIFY_USERNAME")
+		os.Unsetenv("MUSIC_SOCIAL_URL")
+		os.Unsetenv("MUSIC_SOCIAL_USERNAME")
 		os.Unsetenv("PLEX_URL")
 	}()
 
 	cfg.loadFromOSEnv()
 
-	// Test that values were loaded
-	if cfg.Spotify.ClientID != "test_client_id" {
-		t.Errorf("Expected ClientID 'test_client_id', got '%s'", cfg.Spotify.ClientID)
+	if cfg.MusicSocial.BaseURL != "https://ms.example.com" {
+		t.Errorf("Expected BaseURL 'https://ms.example.com', got '%s'", cfg.MusicSocial.BaseURL)
 	}
-	if cfg.Spotify.Username != "test_user" {
-		t.Errorf("Expected Username 'test_user', got '%s'", cfg.Spotify.Username)
+	if cfg.MusicSocial.Username != "test_user" {
+		t.Errorf("Expected Username 'test_user', got '%s'", cfg.MusicSocial.Username)
 	}
 	if cfg.Plex.URL != "http://test:32400" {
 		t.Errorf("Expected URL 'http://test:32400', got '%s'", cfg.Plex.URL)
 	}
+}
 
-	// Test that empty values don't override defaults
-	if cfg.Spotify.RedirectURI != "http://localhost:8080/callback" {
-		t.Errorf("Expected default RedirectURI, got '%s'", cfg.Spotify.RedirectURI)
+func TestLoadExactMatchesOnlyFromEnv(t *testing.T) {
+	defer os.Unsetenv("PLEXIFY_EXACT_MATCHES_ONLY")
+
+	cfg := &Config{}
+	cfg.initializeDefaults()
+	os.Setenv("PLEXIFY_EXACT_MATCHES_ONLY", "true")
+	cfg.loadFromOSEnv()
+	if !cfg.Plex.ExactMatchesOnly {
+		t.Error("expected ExactMatchesOnly true")
+	}
+}
+
+func TestLoadPlexMaxRequestsPerSecondFromEnv(t *testing.T) {
+	defer os.Unsetenv("PLEX_MAX_REQUESTS_PER_SECOND")
+
+	cfg := &Config{}
+	cfg.initializeDefaults()
+	os.Setenv("PLEX_MAX_REQUESTS_PER_SECOND", "0")
+	cfg.loadFromOSEnv()
+	if cfg.Plex.MaxRequestsPerSecond != 0 {
+		t.Errorf("expected 0 (unlimited), got %v", cfg.Plex.MaxRequestsPerSecond)
+	}
+
+	cfg.initializeDefaults()
+	os.Setenv("PLEX_MAX_REQUESTS_PER_SECOND", "8.5")
+	cfg.loadFromOSEnv()
+	if cfg.Plex.MaxRequestsPerSecond != 8.5 {
+		t.Errorf("expected 8.5, got %v", cfg.Plex.MaxRequestsPerSecond)
 	}
 }
 
 func TestApplyOverridesEmptyValues(t *testing.T) {
 	cfg := &Config{
-		Spotify: SpotifyConfig{
+		MusicSocial: MusicSocialConfig{
 			Username: "original_user",
 		},
 		Plex: PlexConfig{
@@ -277,27 +274,37 @@ func TestApplyOverridesEmptyValues(t *testing.T) {
 		},
 	}
 
-	// Test that empty values in overrides don't change existing values
 	overrides := map[string]string{
-		"SPOTIFY_USERNAME":        "", // Empty value
+		"MUSIC_SOCIAL_USERNAME":   "",
 		"PLEX_LIBRARY_SECTION_ID": "10",
-		"PLEX_URL":                "", // Empty value
+		"PLEX_URL":                "",
 	}
 
 	cfg.applyOverrides(overrides)
 
-	// Username should remain unchanged because override was empty
-	if cfg.Spotify.Username != "original_user" {
-		t.Errorf("Expected username 'original_user' (unchanged), got '%s'", cfg.Spotify.Username)
+	if cfg.MusicSocial.Username != "original_user" {
+		t.Errorf("Expected username 'original_user' (unchanged), got '%s'", cfg.MusicSocial.Username)
 	}
 
-	// LibrarySectionID should be updated
 	if cfg.Plex.LibrarySectionID != 10 {
 		t.Errorf("Expected library section ID 10, got %d", cfg.Plex.LibrarySectionID)
 	}
 
-	// URL should remain unchanged because override was empty
 	if cfg.Plex.URL != "" {
 		t.Errorf("Expected empty URL (unchanged), got '%s'", cfg.Plex.URL)
+	}
+}
+
+func TestNormalizeMusicSocialBaseURL(t *testing.T) {
+	got, err := NormalizeMusicSocialBaseURL("  https://example.com/path/  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://example.com/path" {
+		t.Errorf("got %q", got)
+	}
+
+	if _, err := NormalizeMusicSocialBaseURL("ftp://x"); err == nil {
+		t.Error("expected error for non-http scheme")
 	}
 }

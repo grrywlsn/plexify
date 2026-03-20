@@ -1,27 +1,40 @@
 # Plexify
 
-A tool to sync Spotify playlists to playlists on your Plex server.
+A tool to sync playlists from a **[music-social](https://github.com/mastodon-site/musicsocial)** instance into Plex.
 
-Can be run manually as a CLI, or scheduled as a cron task.
+Run it as a CLI or on a schedule (e.g. cron). The catalog is read from your music-social instance over HTTPS; you only need Plex credentials plus `MUSIC_SOCIAL_URL`.
 
-You don't need an active Spotify subscription to use the tool, just a Spotify developer account which is free and easy to get. 
+**Stateless:** Each run is independent. Plexify does not write a local database, cache file, or sync manifest. It reads the current music-social playlists, matches against Plex, and updates Plex playlists over the API. The only durable “state” is whatever Plex already stores for those playlists. Optional `.env` in the working directory is just configuration input (same as environment variables), not application state carried between runs.
 
 > [!IMPORTANT]
-> You can sync any public playlists, even if they don't belong to your Spotify account. However, you cannot sync Spotify-managed playlists like the weekly charts.
+> **Public vs unlisted:** `MUSIC_SOCIAL_USERNAME` only discovers playlists that are **public** on the server (the same set as `GET /users/{username}/playlists.json`). **Unlisted** playlists are not listed there; add their ids explicitly with `MUSIC_SOCIAL_PLAYLIST_ID`.
 
 ## Features
 
-- 🔍 Fetch songs from Spotify playlists
-- 📋 Can take either a [list of Spotify playlists, or find all public playlists by username](#5-finding-playlists)
-- 🎵 Extract track metadata (title, artist, album, duration, ISRC)
-- 🎯 Match Spotify songs to Plex library using title/artist [using pre-defined rules](#matching-order-and-rules)
-- 📝 Create Plex playlists dynamically with matched songs, or update existing playlists
-- 🧠 [Retrieve the MusicBrainz id](#musicbrainz-integration) for missing songs to make it easier to find them
+- Fetch tracks from music-social playlists over HTTPS (JSON API)
+- Supply a **username** (all public playlists), **playlist id(s)**, or both (merged and deduplicated)
+- Use track metadata from music-social (title, artist, album, duration; MusicBrainz ISRC/MBID when present)
+- Match source tracks to your Plex music library [using the same rules as before](#matching-order-and-rules)
+- Create or update Plex playlists; playlist summary includes a line like `synced from music-social: <url>`
+- **Stateless** — no on-disk sync state; safe for ephemeral containers and cron without volumes
+- **Playlist change preview** — before rewriting a Plex playlist, prints a git-style diff (adds / removals / substitutions) comparing current Plex items to the desired list; then sync runs as before
+
+### Playlist change preview
+
+After matching tracks to your library, Plexify fetches the existing playlist’s items (if the playlist already exists), compares **ordered** `ratingKey` lists with an LCS-based diff, and prints a **PLAYLIST CHANGES** block to stdout:
+
+- Green `+`: tracks to add (music-social source line + matched Plex line + confidence)
+- Red `-`: tracks to remove (Plex line only)
+- Yellow `~`: substitution when a delete+insert pair is coalesced (previous Plex track → new source + new Plex + confidence)
+
+Colors apply when stdout is a terminal. Set [`NO_COLOR`](https://no-color.org/) to force plain text. New playlists show an add-only diff (every matched track as `+`) before the playlist is created.
+
+Because Plexify is stateless, it cannot highlight “same Plex track, different confidence vs last run”; yellow reflects a **different library track** at that edit (or a paired remove/add in order).
 
 ## Prerequisites
 
-- Spotify API credentials (**not** your username and password)
-- Plex Media Server with music library, and the `X-Plex-Token` token
+- A reachable **music-social** deployment and its HTTPS base URL
+- Plex Media Server with a music library and an `X-Plex-Token`
 
 ## Quick Start
 
@@ -50,28 +63,28 @@ wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin
 **Windows:**
 Download `plexify-windows-amd64.exe` from the [releases page](https://github.com/grrywlsn/plexify/releases) and rename to `plexify.exe`
 
-### 2. Spotify API Setup
+### 2. music-social URL
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new application
-3. Note your `Client ID` and `Client Secret`
-4. Add `http://localhost:8080/callback` to your redirect URIs
+Set `MUSIC_SOCIAL_URL` to the **origin** of your instance (scheme + host, optional path prefix), for example `https://music.example.com`. Plexify calls:
 
-**Docker:**
+- `GET {MUSIC_SOCIAL_URL}/users/{username}/playlists.json`
+- `GET {MUSIC_SOCIAL_URL}/playlist/{id}.json`
 
-Start the container like the following:
+No API token is required for these read-only endpoints on a typical music-social deployment.
 
-```bash
-docker run --rm ghcr.io/grrywlsn/plexify:latest -SPOTIFY_CLIENT_ID=your_spotify_client_id_here
-```
-
-If you want to run the container with environment variables, do it the following way:
+**Docker example:**
 
 ```bash
-docker run --rm -e SPOTIFY_CLIENT_ID='your_spotify_client_id_here' ghcr.io/grrywlsn/plexify:latest
+docker run --rm \
+  -e MUSIC_SOCIAL_URL='https://music.example.com' \
+  -e MUSIC_SOCIAL_USERNAME='your_user' \
+  -e PLEX_URL='http://plex:32400' \
+  -e PLEX_TOKEN='your_token' \
+  -e PLEX_LIBRARY_SECTION_ID='1' \
+  ghcr.io/grrywlsn/plexify:latest
 ```
 
-For available configuration options look under [4. Configuration](#4-configuration).
+See [4. Configuration](#4-configuration) for all variables.
 
 ### 3. Plex Setup
 
@@ -96,41 +109,67 @@ For available configuration options look under [4. Configuration](#4-configurati
 
 ### 4. Configuration
 
-The variables for configuration are:
-
 ```env
-# Spotify Configuration
-SPOTIFY_CLIENT_ID=your_spotify_client_id_here
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here
+# music-social (required)
+MUSIC_SOCIAL_URL=https://your-music-social.example.com
 
-# Plex Configuration
+# Plex (required)
 PLEX_URL=http://your_plex_server:32400
 PLEX_TOKEN=your_plex_token_here
 PLEX_LIBRARY_SECTION_ID=your_music_library_section_id
 
-# Playlist Configuration
-# You can use either or both of these options:
+# Playlists: at least one of USERNAME or PLAYLIST_ID is required
 
-# Option 1: Set SPOTIFY_USERNAME to fetch all public playlists for a user
-SPOTIFY_USERNAME=your_spotify_username_here
+# Option 1: all public playlists for this account username
+MUSIC_SOCIAL_USERNAME=your_username
 
-# Option 2: Comma-separated list of specific Spotify playlist IDs
-SPOTIFY_PLAYLIST_ID=playlist_id_1,playlist_id_2,playlist_id_3
+# Option 2: comma-separated playlist ids from music-social
+MUSIC_SOCIAL_PLAYLIST_ID=pl_abc123,pl_def456
 
-# Note: If both are set, playlists will be combined and deduplicated
+# Optional: exclude ids when using USERNAME (or when merging lists)
+MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID=pl_skip_this
 
-# Optional: Comma-separated list of playlist IDs to exclude from processing
-# This works with both SPOTIFY_USERNAME and SPOTIFY_PLAYLIST_ID
-SPOTIFY_PLAYLIST_EXCLUDED_ID=playlist_id_to_exclude_1,playlist_id_to_exclude_2
+# Optional Plex server id (auto-discovered if unset)
+PLEX_SERVER_ID=
+
+# Optional: Plex HTTPS — by default TLS certificate verification is skipped (LAN/self-signed). For strict verification:
+# PLEX_VERIFY_TLS=true
+# (Legacy: PLEX_INSECURE_SKIP_VERIFY=false forces verify; =true skips verify.)
+
+# Optional: parallel Plex track lookups while matching (1 = sequential, max 32)
+# PLEX_MATCH_CONCURRENCY=4
+
+# Optional: cap Plex HTTP traffic (requests per second; default 4, 0 = unlimited)
+# PLEX_MAX_REQUESTS_PER_SECOND=8
+# (All Plex HTTP calls share one limiter, so high PLEX_MATCH_CONCURRENCY mostly queues on the limit.)
+
+# Optional: dry-run — match and print playlist diff; do not create/clear/add on Plex
+# PLEXIFY_DRY_RUN=true
+
+# Optional: fast search — skip full-library scan; use Plex /search only (may miss hard matches)
+# PLEXIFY_FAST_SEARCH=true
+# (alias: PLEX_SKIP_FULL_LIBRARY_SEARCH=true)
+
+# Optional: exact-matches-only — only the raw title/artist search strategy (no brackets/featuring/etc.); no full-library scan. Use with dry-run to spot metadata or library gaps quickly.
+# PLEXIFY_EXACT_MATCHES_ONLY=true
 ```
 
-These can be set either as environment variables, loaded from a `.env` file, or passed in as flags, like so:
+Environment variables, a `.env` file, or flags (same names, e.g. `-MUSIC_SOCIAL_URL=...`) are all supported.
 
-```env
+Additional CLI-only flags:
+
+- `-dry-run` — same as `PLEXIFY_DRY_RUN=true`
+- `-plex-match-concurrency=N` — overrides `PLEX_MATCH_CONCURRENCY` (1–32)
+- `-plex-insecure-tls` — same as `PLEX_INSECURE_SKIP_VERIFY=true` (usually redundant; skipping verify is already the default)
+- `-plex-verify-tls` — same as `PLEX_VERIFY_TLS=true` (enable certificate verification for Plex HTTPS)
+- `-plex-fast-search` — same as `PLEXIFY_FAST_SEARCH=true` (no `/all` fallback)
+- `-exact-matches-only` — same as `PLEXIFY_EXACT_MATCHES_ONLY=true` (first search strategy only; no `/all`)
+- `-plex-max-rps=N` — overrides `PLEX_MAX_REQUESTS_PER_SECOND` (`0` = unlimited)
+
+```bash
 ./plexify \
-  -SPOTIFY_CLIENT_ID=your_spotify_client_id_here \
-  -SPOTIFY_CLIENT_SECRET=your_spotify_client_secret_here \
-  -SPOTIFY_PLAYLIST_ID=5a1G7EQcb8D5Tw5lzMQEmr \
+  -MUSIC_SOCIAL_URL=https://music.example.com \
+  -MUSIC_SOCIAL_PLAYLIST_ID=pl_abc123 \
   -PLEX_URL=http://your_plex_server:32400 \
   -PLEX_TOKEN=your_plex_token_here \
   -PLEX_LIBRARY_SECTION_ID=6
@@ -138,52 +177,40 @@ These can be set either as environment variables, loaded from a `.env` file, or 
 
 ### 5. Finding playlists
 
-You can sync multiple Spotify playlists at once by providing a comma-separated list:
+Playlist ids are the same as in the music-social UI URL: `https://your-instance/playlist/{id}`.
 
 ```env
-# Single playlist
-SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M
+MUSIC_SOCIAL_PLAYLIST_ID=pl_single
 
 # Multiple playlists
-SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N,37i9dQZF1DXcBWIGoYBM5O
+MUSIC_SOCIAL_PLAYLIST_ID=pl_one,pl_two,pl_three
 ```
 
-* Open Spotify and navigate to your playlist
-* Right-click and select "Share" → "Copy link to playlist"
-* The playlist ID is the string after the last `/` in the URL
-  - Example: `https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M`
-  - Playlist ID: `37i9dQZF1DXcBWIGoYBM5M`
-
-Or you can provide a Spotify username and all public playlists will be found and synced:
+Or sync every **public** playlist for a user:
 
 ```env
-SPOTIFY_USERNAME=your_spotify_username_here
+MUSIC_SOCIAL_USERNAME=alice
 ```
 
-You can also use both options together - playlists will be combined and deduplicated:
+Combine both: public playlists for `alice` plus extra ids, deduplicated:
 
 ```env
-# Fetch all public playlists for the user AND add specific playlist IDs
-SPOTIFY_USERNAME=your_spotify_username_here
-SPOTIFY_PLAYLIST_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
+MUSIC_SOCIAL_USERNAME=alice
+MUSIC_SOCIAL_PLAYLIST_ID=pl_extra_only_in_ids
 ```
 
-#### Excluding Playlists
-
-You can exclude specific playlists from being synced by setting `SPOTIFY_PLAYLIST_EXCLUDED_ID`. This works with both `SPOTIFY_USERNAME` and `SPOTIFY_PLAYLIST_ID`:
+#### Excluding playlists
 
 ```env
-# Exclude a single playlist
-SPOTIFY_PLAYLIST_EXCLUDED_ID=37i9dQZF1DXcBWIGoYBM5M
-
-# Exclude multiple playlists
-SPOTIFY_PLAYLIST_EXCLUDED_ID=37i9dQZF1DXcBWIGoYBM5M,37i9dQZF1DXcBWIGoYBM5N
+MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID=pl_no_sync,pl_also_skip
 ```
-
-This is useful when syncing all public playlists for a user but wanting to skip certain ones.
 
 > [!IMPORTANT]
-> Each Spotify playlist will be synced to a new Plex playlist with the exact same name as the original. If a playlist of the same name exists in Plex, it will update it to match the matched Spotify tracks - this **will remove other songs if they exist**.
+> Each source playlist becomes a Plex playlist with the **same title**. If a Plex playlist with that title already exists, it is **replaced** with the matched tracks from the source (existing items not in the source are removed).
+
+#### Playlist artwork
+
+music-social’s playlist JSON does not expose a cover URL, so Plexify usually **does not** set a Plex playlist poster.
 
 ## Results
 
@@ -193,7 +220,7 @@ This is useful when syncing all public playlists for a user but wanting to skip 
 Playlist: my favourite songs
 Description: what I'm listening to right now
 Total tracks: 62
-Owner: myspotifyname
+Owner: alice
 
 Songs in playlist (62 total):
 ================================================================================
@@ -201,7 +228,7 @@ Songs in playlist (62 total):
   2. Mae Stephens - Tiny Voice (Tiny Voice)
   3. Georgia - Wanna Play (Wanna Play)
   ...
-Successfully fetched 62 songs from Spotify playlist
+Successfully fetched 62 songs from music-social playlist
 
 ================================================================================
 MATCHING SONGS TO PLEX LIBRARY
@@ -213,7 +240,7 @@ Matching song 2/62: Mae Stephens - Tiny Voice
 ================================================================================
 MATCHING RESULTS
 ================================================================================
-  1. Bad Bunny - ALAMBRE PúA: ✅ ISRC match (Plex: Bad Bunny - ALAMBRE PúA)
+  1. Bad Bunny - ALAMBRE PúA: 🔍 Title/Artist match (Plex: Bad Bunny - ALAMBRE PúA)
   2. Mae Stephens - Tiny Voice: 🔍 Title/Artist match (Plex: Mae Stephens - Tiny Voice)
   3. Georgia - Wanna Play: ❌ No match
   ...
@@ -222,8 +249,7 @@ MATCHING RESULTS
 SUMMARY
 ================================================================================
 Total songs: 62
-ISRC matches: 45 (72.6%)
-Title/Artist matches: 12 (19.4%)
+Title/Artist matches: 57 (91.9%)
 No matches: 5 (8.1%)
 Total matches: 57 (91.9%)
 
@@ -236,45 +262,24 @@ MISSING TRACKS SUMMARY
 Tracks not found in Plex library (5 total):
 --------------------------------------------------------------------------------
   1. Diplo - Get It Right
-     Track ID: 4Qv9uaS4tPFlmG7Iac9uQJ
      ISRC: (not available)
 
   2. Some Artist - Some Song
-     Track ID: 7x8dJ7q9K2L3M4N5O6P7Q8
      ISRC: USRC12345678
      MusicBrainz ID: 12345678-1234-1234-1234-123456789012 (https://musicbrainz.org/recording/12345678-1234-1234-1234-123456789012)
 
   3. Another Artist - Another Song
-     Track ID: 1A2B3C4D5E6F7G8H9I0J1K2L
      ISRC: (not available)
-     MusicBrainz ID: (not found)
 ```
 
-**Note:** The Missing Tracks Summary shows tracks that couldn't be found in your Plex library, including their Spotify Track ID, ISRC (International Standard Recording Code), and MusicBrainz ID when available.
-
-## MusicBrainz Integration
-
-Plexify includes integration with the MusicBrainz database to provide additional track identification information. When tracks are not found in your Plex library, plexify will automatically:
-
-1. **Search by ISRC** (if available): Uses the International Standard Recording Code to find the exact track in MusicBrainz
-2. **Search by Artist/Title** (fallback): If ISRC is not available or not found, searches by artist and title combination
-
-The MusicBrainz ID can be used to:
-
-- Look up detailed track information on the MusicBrainz website
-- Find alternative versions or releases of the same track
-- Get additional metadata like recording dates, genres, and more
-- Use with other music services that support MusicBrainz IDs
-- Add to Lidarr to search for an exact match or fix the metadata assigned to your files
-
-**API Rate Limiting:** MusicBrainz has rate limiting in place. Plexify respects these limits and will make requests at a reasonable pace to avoid being blocked.
+**Note:** The missing-tracks section lists ISRC when known and a MusicBrainz recording link when music-social supplied a MBID for that track.
 
 ## Matching Order and Rules
 
 ### 1. **Exact Title/Artist Match** (First Priority)
 
 **When it applies:** All songs (highest priority for reliability)
-**What it does:** Searches using the exact title and artist from Spotify without any modifications
+**What it does:** Searches using the exact title and artist from the source track without any modifications
 **Rules:**
 
 - Tries combined search: `"Song Title Artist Name"`
@@ -380,7 +385,7 @@ The MusicBrainz ID can be used to:
 
 If you run into issues where plexify will not match a song that you know is in your Plex library, [please raise an issue in this repo](https://github.com/grrywlsn/plexify/issues), and include:
 
-- the artist name and track name from Spotify
+- the artist name and track name from music-social
 - the artist name and track name from your Plex
 
 Please copy/paste them **exactly** as they appear in each source, so that the matching can be tested.

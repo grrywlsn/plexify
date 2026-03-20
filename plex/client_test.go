@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/grrywlsn/plexify/config"
-	"github.com/grrywlsn/plexify/spotify"
+	"github.com/grrywlsn/plexify/track"
 )
 
 func TestNewClient(t *testing.T) {
@@ -62,7 +62,7 @@ func TestCalculateStringSimilarity(t *testing.T) {
 	similarity = client.calculateStringSimilarity("test", "different")
 	// For "test" vs "different": no substring match, word similarity = 0, length similarity = 1 - |4-9|/9 = 1 - 5/9 = 4/9
 	// Final result = 0.7 * 0 + 0.3 * (4/9) = 0.133...
-	expectedNoMatch := 0.3 * (1.0 - float64(abs(4-9))/float64(max(4, 9)))
+	expectedNoMatch := 0.3 * (1.0 - float64(5)/float64(max(4, 9)))
 	if similarity != expectedNoMatch {
 		t.Errorf("Expected similarity %f for no match, got %f", expectedNoMatch, similarity)
 	}
@@ -70,13 +70,12 @@ func TestCalculateStringSimilarity(t *testing.T) {
 
 func TestCalculateConfidence(t *testing.T) {
 	client := &Client{}
-	song := spotify.Song{
+	song := track.Track{
 		ID:       "test_id",
 		Name:     "Test Song",
 		Artist:   "Test Artist",
 		Album:    "Test Album",
 		Duration: 180000,
-		URI:      "spotify:track:test_id",
 		ISRC:     "TEST12345678",
 	}
 
@@ -88,19 +87,19 @@ func TestCalculateConfidence(t *testing.T) {
 	}
 
 	// Test ISRC match (not implemented in calculateConfidence, returns 0.0)
-	confidence := client.calculateConfidence(song, track, "isrc")
+	confidence := client.calculateConfidence(song, track, MatchKindISRC)
 	if confidence != 0.0 {
 		t.Errorf("Expected confidence 0.0 for ISRC match (not implemented), got %f", confidence)
 	}
 
 	// Test title/artist match
-	confidence = client.calculateConfidence(song, track, "title_artist")
+	confidence = client.calculateConfidence(song, track, MatchTypeTitleArtist)
 	if confidence != 1.0 {
 		t.Errorf("Expected confidence 1.0 for exact title/artist match, got %f", confidence)
 	}
 
 	// Test no match
-	confidence = client.calculateConfidence(song, nil, "none")
+	confidence = client.calculateConfidence(song, nil, MatchTypeNone)
 	if confidence != 0.0 {
 		t.Errorf("Expected confidence 0.0 for no match, got %f", confidence)
 	}
@@ -295,32 +294,32 @@ func TestNormalizeAccents(t *testing.T) {
 func TestAccentMatchingScenario(t *testing.T) {
 	client := &Client{}
 
-	// Test the specific case mentioned: Spotify "MONACO" vs Plex "MÓNACO"
-	spotifyTitle := "MONACO"
+	// Test the specific case mentioned: Source "MONACO" vs Plex "MÓNACO"
+	sourceTitle := "MONACO"
 	plexTitle := "MÓNACO"
 	artist := "Bad Bunny"
 
 	t.Logf("Testing accent normalization for track matching:")
-	t.Logf("Spotify title: %s", spotifyTitle)
+	t.Logf("Source title: %s", sourceTitle)
 	t.Logf("Plex title: %s", plexTitle)
 	t.Logf("Artist: %s", artist)
 
 	// Test accent normalization
-	normalizedSpotify := client.normalizeAccents(spotifyTitle)
+	normalizedSource := client.normalizeAccents(sourceTitle)
 	normalizedPlex := client.normalizeAccents(plexTitle)
 
 	t.Logf("After accent normalization:")
-	t.Logf("Spotify: %s -> %s", spotifyTitle, normalizedSpotify)
+	t.Logf("Source: %s -> %s", sourceTitle, normalizedSource)
 	t.Logf("Plex: %s -> %s", plexTitle, normalizedPlex)
 
 	// Test string similarity
 	originalSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(spotifyTitle),
+		strings.ToLower(sourceTitle),
 		strings.ToLower(plexTitle),
 	)
 
 	accentSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(normalizedSpotify),
+		strings.ToLower(normalizedSource),
 		strings.ToLower(normalizedPlex),
 	)
 
@@ -348,35 +347,32 @@ func TestAccentMatchingScenario(t *testing.T) {
 
 func TestSearchTrackWithSingleQuotes(t *testing.T) {
 	// Test song with single quote in title
-	song := spotify.Song{
+	song := track.Track{
 		ID:       "test_id",
 		Name:     "Don't Stop Believin'",
 		Artist:   "Journey",
 		Album:    "Escape",
 		Duration: 180000,
-		URI:      "spotify:track:test_id",
 		ISRC:     "TEST12345678",
 	}
 
 	// Test song with apostrophe in title
-	song2 := spotify.Song{
+	song2 := track.Track{
 		ID:       "test_id2",
 		Name:     "I'm Still Standing",
 		Artist:   "Elton John",
 		Album:    "Too Low For Zero",
 		Duration: 180000,
-		URI:      "spotify:track:test_id2",
 		ISRC:     "TEST87654321",
 	}
 
 	// Test song with single quote in artist name
-	song3 := spotify.Song{
+	song3 := track.Track{
 		ID:       "test_id3",
 		Name:     "Bohemian Rhapsody",
 		Artist:   "Queen's",
 		Album:    "A Night at the Opera",
 		Duration: 180000,
-		URI:      "spotify:track:test_id3",
 		ISRC:     "TEST11111111",
 	}
 
@@ -495,29 +491,26 @@ func TestSetServerID(t *testing.T) {
 
 func TestAddSyncAttribution(t *testing.T) {
 	client := &Client{}
+	srcURL := "https://music.example.com/playlist/abc123"
 
-	// Test with empty description and valid spotifyPlaylistID
-	result := client.addSyncAttribution("", "37i9dQZF1DXcBWIGoYBM5M")
-	expected := "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+	result := client.addSyncAttribution("", srcURL)
+	expected := "synced from music-social: " + srcURL
 	if result != expected {
 		t.Errorf("Expected sync attribution to be '%s', got '%s'", expected, result)
 	}
 
-	// Test with existing description and valid spotifyPlaylistID
-	result = client.addSyncAttribution("Original description", "37i9dQZF1DXcBWIGoYBM5M")
-	expected = "Original description\n\nsynced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+	result = client.addSyncAttribution("Original description", srcURL)
+	expected = "Original description\n\nsynced from music-social: " + srcURL
 	if result != expected {
 		t.Errorf("Expected sync attribution to be '%s', got '%s'", expected, result)
 	}
 
-	// Test with empty spotifyPlaylistID (should return original description unchanged)
 	result = client.addSyncAttribution("Original description", "")
 	expected = "Original description"
 	if result != expected {
 		t.Errorf("Expected sync attribution to be '%s', got '%s'", expected, result)
 	}
 
-	// Test with both empty (should return empty string)
 	result = client.addSyncAttribution("", "")
 	expected = ""
 	if result != expected {
@@ -533,19 +526,19 @@ func TestManualInstructionFunctions(t *testing.T) {
 func TestSimilarityScoresWithSingleQuotes(t *testing.T) {
 	client := &Client{}
 
-	// Test case: Spotify song with single quote vs Plex track with single quote
-	spotifyTitle := "Don't Stop Believin'"
-	spotifyArtist := "Journey"
+	// Test case: source track with single quote vs Plex track with single quote
+	sourceTitle := "Don't Stop Believin'"
+	sourceArtist := "Journey"
 	plexTitle := "Don't Stop Believin'"
 	plexArtist := "Journey"
 
 	// Calculate similarity scores
 	titleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(spotifyTitle)),
+		strings.ToLower(strings.TrimSpace(sourceTitle)),
 		strings.ToLower(strings.TrimSpace(plexTitle)),
 	)
 	artistSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(spotifyArtist)),
+		strings.ToLower(strings.TrimSpace(sourceArtist)),
 		strings.ToLower(strings.TrimSpace(plexArtist)),
 	)
 
@@ -564,7 +557,7 @@ func TestSimilarityScoresWithSingleQuotes(t *testing.T) {
 	// Test case: Similar but not exact match
 	plexTitle2 := "Don't Stop Believing" // Missing the final apostrophe
 	titleSimilarity2 := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(spotifyTitle)),
+		strings.ToLower(strings.TrimSpace(sourceTitle)),
 		strings.ToLower(strings.TrimSpace(plexTitle2)),
 	)
 	score2 := (titleSimilarity2 * 0.7) + (artistSimilarity * 0.3)
@@ -673,15 +666,14 @@ func TestClearPlaylist(t *testing.T) {
 func TestNeonMoonMatchingScenario(t *testing.T) {
 	client := &Client{}
 
-	// Test case: Spotify song "Neon Moon - with Kacey Musgraves" by "Brooks & Dunn"
+	// Test case: source track "Neon Moon - with Kacey Musgraves" by "Brooks & Dunn"
 	// should match Plex track "Neon Moon" by "Brooks & Dunn"
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		ID:       "test_neon_moon",
 		Name:     "Neon Moon - with Kacey Musgraves",
 		Artist:   "Brooks & Dunn",
 		Album:    "Borderline",
 		Duration: 240000,
-		URI:      "spotify:track:test_neon_moon",
 		ISRC:     "TEST98765432",
 	}
 
@@ -709,7 +701,7 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 
 	// Test 1: FindBestMatch should find exact match first
 	t.Run("ExactMatchPriority", func(t *testing.T) {
-		result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 		if result == nil {
 			t.Error("Expected to find a match, got nil")
@@ -724,17 +716,17 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 
 	// Test 2: Test the "with" removal logic specifically
 	t.Run("WithRemovalLogic", func(t *testing.T) {
-		// Remove "with" from the Spotify title
-		cleanedTitle := client.removeWith(spotifySong.Name)
+		// Remove "with" from the source title
+		cleanedTitle := client.removeWith(srcTrack.Name)
 		expectedCleaned := "Neon Moon"
 
 		if cleanedTitle != expectedCleaned {
 			t.Errorf("Expected removeWith('%s') to return '%s', got '%s'",
-				spotifySong.Name, expectedCleaned, cleanedTitle)
+				srcTrack.Name, expectedCleaned, cleanedTitle)
 		}
 
 		// Now search for the cleaned title
-		result := client.FindBestMatch(plexTracks, cleanedTitle, spotifySong.Artist)
+		result := client.FindBestMatch(plexTracks, cleanedTitle, srcTrack.Artist)
 
 		if result == nil {
 			t.Error("Expected to find a match after removing 'with', got nil")
@@ -749,14 +741,14 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 
 	// Test 3: Test confidence calculation for this scenario
 	t.Run("ConfidenceCalculation", func(t *testing.T) {
-		// Test confidence between Spotify song and Plex track with "with" removed
+		// Test confidence between source track and Plex track with "with" removed
 		plexTrack := &PlexTrack{
 			ID:     "plex_neon_moon_clean",
 			Title:  "Neon Moon",
 			Artist: "Brooks & Dunn",
 		}
 
-		confidence := client.calculateConfidence(spotifySong, plexTrack, "title_artist")
+		confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
 
 		// The confidence should be high since artist matches exactly and title is very similar
 		if confidence < 0.8 {
@@ -768,19 +760,19 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 
 	// Test 4: Test string similarity for this specific case
 	t.Run("StringSimilarity", func(t *testing.T) {
-		spotifyTitle := "Neon Moon - with Kacey Musgraves"
+		sourceTitle := "Neon Moon - with Kacey Musgraves"
 		plexTitle := "Neon Moon"
 
 		// Test original title similarity
 		originalSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifyTitle)),
+			strings.ToLower(strings.TrimSpace(sourceTitle)),
 			strings.ToLower(strings.TrimSpace(plexTitle)),
 		)
 
 		// Test with "with" removed
-		cleanedSpotifyTitle := client.removeWith(spotifyTitle)
+		cleanedSourceTitle := client.removeWith(sourceTitle)
 		cleanedSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(cleanedSpotifyTitle)),
+			strings.ToLower(strings.TrimSpace(cleanedSourceTitle)),
 			strings.ToLower(strings.TrimSpace(plexTitle)),
 		)
 
@@ -811,10 +803,10 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 		}
 
 		// Test that FindBestMatch correctly identifies this as a good match
-		result := client.FindBestMatch(searchResults, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist)
 
 		// Add debug output to understand what's happening
-		t.Logf("Searching for: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+		t.Logf("Searching for: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 		t.Logf("Available tracks: %+v", searchResults)
 
 		if result == nil {
@@ -835,14 +827,13 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 func TestIncorrectMatchingIssue(t *testing.T) {
 	client := &Client{}
 
-	// Test case: Spotify song "the lakes - bonus track" by "Taylor Swift"
-	spotifySong := spotify.Song{
+	// Test case: source track "the lakes - bonus track" by "Taylor Swift"
+	srcTrack := track.Track{
 		ID:       "test_the_lakes",
 		Name:     "the lakes - bonus track",
 		Artist:   "Taylor Swift",
 		Album:    "folklore",
 		Duration: 240000,
-		URI:      "spotify:track:test_the_lakes",
 		ISRC:     "TEST11111111",
 	}
 
@@ -867,7 +858,7 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 
 	// Test 1: Verify that this should NOT match
 	t.Run("ShouldNotMatch", func(t *testing.T) {
-		result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 		// This should NOT match - the songs are completely different
 		if result != nil {
@@ -875,16 +866,16 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 				result.Title, result.Artist)
 
 			// Calculate the confidence to understand why it matched
-			confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 			t.Logf("Incorrect match confidence: %f", confidence)
 
 			// Calculate individual similarities
 			titleSimilarity := client.calculateStringSimilarity(
-				strings.ToLower(strings.TrimSpace(spotifySong.Name)),
+				strings.ToLower(strings.TrimSpace(srcTrack.Name)),
 				strings.ToLower(strings.TrimSpace(result.Title)),
 			)
 			artistSimilarity := client.calculateStringSimilarity(
-				strings.ToLower(strings.TrimSpace(spotifySong.Artist)),
+				strings.ToLower(strings.TrimSpace(srcTrack.Artist)),
 				strings.ToLower(strings.TrimSpace(result.Artist)),
 			)
 
@@ -896,18 +887,18 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 
 	// Test 2: Test individual similarity calculations
 	t.Run("SimilarityCalculations", func(t *testing.T) {
-		spotifyTitle := "the lakes - bonus track"
-		spotifyArtist := "Taylor Swift"
+		sourceTitle := "the lakes - bonus track"
+		sourceArtist := "Taylor Swift"
 		plexTitle := "Some Other Song"    // Use actual track from plexTracks
 		plexArtist := "Some Other Artist" // Use actual track from plexTracks
 
 		// Test original similarities
 		titleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifyTitle)),
+			strings.ToLower(strings.TrimSpace(sourceTitle)),
 			strings.ToLower(strings.TrimSpace(plexTitle)),
 		)
 		artistSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifyArtist)),
+			strings.ToLower(strings.TrimSpace(sourceArtist)),
 			strings.ToLower(strings.TrimSpace(plexArtist)),
 		)
 
@@ -916,19 +907,19 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 
 		// Test with various transformations
 		cleanTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeBrackets(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.removeBrackets(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.removeBrackets(plexTitle))),
 		)
 		featuringTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeFeaturing(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.removeFeaturing(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.removeFeaturing(plexTitle))),
 		)
 		normalizedTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.normalizeTitle(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.normalizeTitle(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.normalizeTitle(plexTitle))),
 		)
 		withTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeWith(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.removeWith(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.removeWith(plexTitle))),
 		)
 
@@ -952,7 +943,7 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 			ID: "plex_korean_track",
 		}
 
-		confidence := client.calculateConfidence(spotifySong, plexTrack, "title_artist")
+		confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
 
 		// The confidence should be below the threshold for completely different songs
 		if confidence >= MinConfidenceScore {
@@ -966,13 +957,12 @@ func TestSearchFlowSimulation(t *testing.T) {
 	client := &Client{}
 
 	// Test case: Simulate what might happen in the actual search flow
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		ID:       "test_the_lakes",
 		Name:     "the lakes - bonus track",
 		Artist:   "Taylor Swift",
 		Album:    "folklore",
 		Duration: 240000,
-		URI:      "spotify:track:test_the_lakes",
 		ISRC:     "TEST11111111",
 	}
 
@@ -980,7 +970,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 	t.Run("EmptySearchResults", func(t *testing.T) {
 		// Test what happens when search returns no results
 		emptyResults := []PlexTrack{}
-		result := client.FindBestMatch(emptyResults, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(emptyResults, srcTrack.Name, srcTrack.Artist)
 
 		if result != nil {
 			t.Errorf("Expected nil result for empty search results, got: %+v", result)
@@ -995,14 +985,14 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(singleResult, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(singleResult, srcTrack.Name, srcTrack.Artist)
 
 		// This should NOT match due to low confidence
 		if result != nil {
 			t.Errorf("Expected NO match for single unrelated result, but got: '%s' by '%s'",
 				result.Title, result.Artist)
 
-			confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 			t.Logf("Unexpected match confidence: %f", confidence)
 		}
 	})
@@ -1025,13 +1015,13 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(multipleResults, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(multipleResults, srcTrack.Name, srcTrack.Artist)
 
 		// Add debug output to understand what's happening
-		t.Logf("Searching for: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+		t.Logf("Searching for: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 		t.Logf("Available tracks:")
 		for i, track := range multipleResults {
-			confidence := client.calculateConfidence(spotifySong, &track, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, &track, MatchTypeTitleArtist)
 			t.Logf("  %d. '%s' by '%s' (confidence: %f)", i+1, track.Title, track.Artist, confidence)
 		}
 
@@ -1060,11 +1050,11 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(lowConfidenceResults, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(lowConfidenceResults, srcTrack.Name, srcTrack.Artist)
 
 		// Both should be below threshold, so no match should be returned
 		if result != nil {
-			confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 			t.Errorf("Expected NO match due to low confidence, but got: '%s' by '%s' (confidence: %f)",
 				result.Title, result.Artist, confidence)
 		}
@@ -1072,20 +1062,20 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("TheLakesConfidenceAnalysis", func(t *testing.T) {
 		// Analyze why "the lakes - bonus track" vs "the lakes" has low confidence
-		spotifyTitle := "the lakes - bonus track"
-		spotifyArtist := "Taylor Swift"
+		sourceTitle := "the lakes - bonus track"
+		sourceArtist := "Taylor Swift"
 		plexTitle := "the lakes"
 		plexArtist := "Taylor Swift"
 
-		t.Logf("Analyzing confidence for '%s' vs '%s'", spotifyTitle, plexTitle)
+		t.Logf("Analyzing confidence for '%s' vs '%s'", sourceTitle, plexTitle)
 
 		// Test original similarities
 		titleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifyTitle)),
+			strings.ToLower(strings.TrimSpace(sourceTitle)),
 			strings.ToLower(strings.TrimSpace(plexTitle)),
 		)
 		artistSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifyArtist)),
+			strings.ToLower(strings.TrimSpace(sourceArtist)),
 			strings.ToLower(strings.TrimSpace(plexArtist)),
 		)
 
@@ -1094,23 +1084,23 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 		// Test with various transformations
 		cleanTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeBrackets(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.removeBrackets(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.removeBrackets(plexTitle))),
 		)
 		featuringTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeFeaturing(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.removeFeaturing(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.removeFeaturing(plexTitle))),
 		)
 		normalizedTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.normalizeTitle(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.normalizeTitle(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.normalizeTitle(plexTitle))),
 		)
 		withTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.removeWith(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.removeWith(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.removeWith(plexTitle))),
 		)
 		suffixTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(spotifyTitle))),
+			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(sourceTitle))),
 			strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(plexTitle))),
 		)
 
@@ -1150,13 +1140,13 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("TitleTransformationDebug", func(t *testing.T) {
 		// Debug what each transformation does to "the lakes - bonus track"
-		spotifyTitle := "the lakes - bonus track"
+		sourceTitle := "the lakes - bonus track"
 
-		t.Logf("Original: '%s'", spotifyTitle)
-		t.Logf("removeBrackets: '%s'", client.removeBrackets(spotifyTitle))
-		t.Logf("removeFeaturing: '%s'", client.removeFeaturing(spotifyTitle))
-		t.Logf("normalizeTitle: '%s'", client.normalizeTitle(spotifyTitle))
-		t.Logf("removeWith: '%s'", client.removeWith(spotifyTitle))
+		t.Logf("Original: '%s'", sourceTitle)
+		t.Logf("removeBrackets: '%s'", client.removeBrackets(sourceTitle))
+		t.Logf("removeFeaturing: '%s'", client.removeFeaturing(sourceTitle))
+		t.Logf("normalizeTitle: '%s'", client.normalizeTitle(sourceTitle))
+		t.Logf("removeWith: '%s'", client.removeWith(sourceTitle))
 
 		// The issue is that none of our transformations handle "bonus track"
 		// We need a new transformation for common suffixes like "bonus track", "remix", etc.
@@ -1380,13 +1370,12 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("RealWorldScenario", func(t *testing.T) {
 		// Test the real-world scenario: "the lakes" not in library, but search returns unrelated results
-		spotifySong := spotify.Song{
+		srcTrack := track.Track{
 			ID:       "test_the_lakes",
 			Name:     "the lakes - bonus track",
 			Artist:   "Taylor Swift",
 			Album:    "folklore",
 			Duration: 240000,
-			URI:      "spotify:track:test_the_lakes",
 			ISRC:     "TEST11111111",
 		}
 
@@ -1420,14 +1409,14 @@ func TestSearchFlowSimulation(t *testing.T) {
 		t.Logf("Searching for: '%s' by '%s'", searchTitle, searchArtist)
 		t.Logf("Available tracks from Plex search:")
 		for i, track := range searchResults {
-			confidence := client.calculateConfidence(spotifySong, &track, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, &track, MatchTypeTitleArtist)
 			t.Logf("  %d. '%s' by '%s' (confidence: %f)", i+1, track.Title, track.Artist, confidence)
 		}
 
 		result := client.FindBestMatch(searchResults, searchTitle, searchArtist)
 
 		if result != nil {
-			confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 			t.Errorf("Expected NO match since 'the lakes' is not in the library, but got: '%s' by '%s' (confidence: %f)",
 				result.Title, result.Artist, confidence)
 
@@ -1443,18 +1432,17 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("SearchFlowDebug", func(t *testing.T) {
 		// Test the actual search flow to see where the bug might be
-		spotifySong := spotify.Song{
+		srcTrack := track.Track{
 			ID:       "test_the_lakes",
 			Name:     "the lakes - bonus track",
 			Artist:   "Taylor Swift",
 			Album:    "folklore",
 			Duration: 240000,
-			URI:      "spotify:track:test_the_lakes",
 			ISRC:     "TEST11111111",
 		}
 
 		// Simulate the search flow step by step
-		t.Logf("Testing search flow for: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+		t.Logf("Testing search flow for: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 
 		// Step 1: Try exact match
 		t.Logf("Step 1: Exact match")
@@ -1466,27 +1454,27 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 		// Step 3: Bracket removal
 		t.Logf("Step 3: Bracket removal")
-		cleanTitle := client.removeBrackets(spotifySong.Name)
+		cleanTitle := client.removeBrackets(srcTrack.Name)
 		t.Logf("  Cleaned title: '%s'", cleanTitle)
 
 		// Step 4: Featuring removal
 		t.Logf("Step 4: Featuring removal")
-		featuringTitle := client.removeFeaturing(spotifySong.Name)
+		featuringTitle := client.removeFeaturing(srcTrack.Name)
 		t.Logf("  Featuring removed: '%s'", featuringTitle)
 
 		// Step 5: Title normalization
 		t.Logf("Step 5: Title normalization")
-		normalizedTitle := client.normalizeTitle(spotifySong.Name)
+		normalizedTitle := client.normalizeTitle(srcTrack.Name)
 		t.Logf("  Normalized: '%s'", normalizedTitle)
 
 		// Step 6: With removal
 		t.Logf("Step 6: With removal")
-		withTitle := client.removeWith(spotifySong.Name)
+		withTitle := client.removeWith(srcTrack.Name)
 		t.Logf("  With removed: '%s'", withTitle)
 
 		// Step 7: Suffix removal
 		t.Logf("Step 7: Suffix removal")
-		suffixTitle := client.RemoveCommonSuffixes(spotifySong.Name)
+		suffixTitle := client.RemoveCommonSuffixes(srcTrack.Name)
 		t.Logf("  Suffix removed: '%s'", suffixTitle)
 
 		// This should be the key step that finds "the lakes"
@@ -1505,13 +1493,12 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("SearchEntireLibraryBug", func(t *testing.T) {
 		// Test the searchEntireLibrary function specifically
-		spotifySong := spotify.Song{
+		srcTrack := track.Track{
 			ID:       "test_the_lakes",
 			Name:     "the lakes - bonus track",
 			Artist:   "Taylor Swift",
 			Album:    "folklore",
 			Duration: 240000,
-			URI:      "spotify:track:test_the_lakes",
 			ISRC:     "TEST11111111",
 		}
 
@@ -1555,14 +1542,14 @@ func TestSearchFlowSimulation(t *testing.T) {
 		t.Logf("Testing searchEntireLibrary for: '%s' by '%s'", searchTitle, searchArtist)
 		t.Logf("Searching through entire library (%d tracks):", len(entireLibrary))
 		for i, track := range entireLibrary {
-			confidence := client.calculateConfidence(spotifySong, &track, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, &track, MatchTypeTitleArtist)
 			t.Logf("  %d. '%s' by '%s' (confidence: %f)", i+1, track.Title, track.Artist, confidence)
 		}
 
 		result := client.FindBestMatch(entireLibrary, searchTitle, searchArtist)
 
 		if result != nil {
-			confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 			t.Logf("⚠️  searchEntireLibrary found a match: '%s' by '%s' (confidence: %f)",
 				result.Title, result.Artist, confidence)
 
@@ -1581,13 +1568,12 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("HighConfidenceScenario", func(t *testing.T) {
 		// Test scenarios where confidence might be high enough to cause incorrect matching
-		spotifySong := spotify.Song{
+		srcTrack := track.Track{
 			ID:       "test_the_lakes",
 			Name:     "the lakes - bonus track",
 			Artist:   "Taylor Swift",
 			Album:    "folklore",
 			Duration: 240000,
-			URI:      "spotify:track:test_the_lakes",
 			ISRC:     "TEST11111111",
 		}
 
@@ -1645,7 +1631,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 				t.Logf("'%s' by '%s' -> FindBestMatch result: %v", tc.title, tc.artist, result)
 
 				if result != nil {
-					confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+					confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 					t.Logf("  Confidence: %f", confidence)
 
 					if tc.expected {
@@ -1752,13 +1738,12 @@ func TestSearchFlowSimulation(t *testing.T) {
 
 	t.Run("TheLakesSpecificTest", func(t *testing.T) {
 		// Test the specific scenario that was causing the issue
-		spotifySong := spotify.Song{
+		srcTrack := track.Track{
 			ID:       "test_the_lakes",
 			Name:     "the lakes - bonus track",
 			Artist:   "Taylor Swift",
 			Album:    "folklore",
 			Duration: 240000,
-			URI:      "spotify:track:test_the_lakes",
 			ISRC:     "TEST11111111",
 		}
 
@@ -1775,7 +1760,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 		result := client.FindBestMatch(searchResults, "the lakes", "Taylor Swift")
 
 		if result != nil {
-			confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 			t.Errorf("❌ BUG: 'The Lakes' by 'Some Other Artist' incorrectly matched 'the lakes' by 'Taylor Swift' (confidence: %f)", confidence)
 		} else {
 			t.Logf("✅ Correctly found NO match - 'The Lakes' by 'Some Other Artist' should not match 'the lakes' by 'Taylor Swift'")
@@ -1793,7 +1778,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 		result2 := client.FindBestMatch(searchResults2, "the lakes", "Taylor Swift")
 
 		if result2 != nil {
-			confidence := client.calculateConfidence(spotifySong, result2, "title_artist")
+			confidence := client.calculateConfidence(srcTrack, result2, MatchTypeTitleArtist)
 			t.Logf("✅ Correctly matched 'The Lakes' by 'Taylor Swift' (confidence: %f)", confidence)
 		} else {
 			t.Errorf("❌ BUG: 'The Lakes' by 'Taylor Swift' should match 'the lakes' by 'Taylor Swift'")
@@ -1804,8 +1789,8 @@ func TestSearchFlowSimulation(t *testing.T) {
 func TestTheLakesConfidenceCalculation(t *testing.T) {
 	client := &Client{}
 
-	// Create the problematic Spotify song
-	spotifySong := spotify.Song{
+	// Create the problematic source track
+	srcTrack := track.Track{
 		Name:   "the lakes - bonus track",
 		Artist: "Taylor Swift",
 	}
@@ -1816,7 +1801,7 @@ func TestTheLakesConfidenceCalculation(t *testing.T) {
 	}
 
 	// Calculate confidence
-	confidence := client.calculateConfidence(spotifySong, plexTrack, "title_artist")
+	confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
 
 	// This should be a very low confidence score
 	if confidence >= MinConfidenceScore {
@@ -1854,7 +1839,7 @@ func TestTheLakesConfidenceCalculation(t *testing.T) {
 func TestFindBestMatchTheLakes(t *testing.T) {
 	client := &Client{}
 
-	// Create the problematic Spotify song
+	// Create the problematic source track
 	title := "the lakes - bonus track"
 	artist := "Taylor Swift"
 
@@ -1878,7 +1863,7 @@ func TestFindBestMatchTheLakes(t *testing.T) {
 func TestFullLibrarySearchSimulation(t *testing.T) {
 	client := &Client{}
 
-	// Create the problematic Spotify song
+	// Create the problematic source track
 	title := "the lakes - bonus track"
 	artist := "Taylor Swift"
 
@@ -1893,6 +1878,7 @@ func TestFullLibrarySearchSimulation(t *testing.T) {
 	// Add some other tracks to simulate the library
 	for i := 0; i < 100; i++ {
 		if i == 50 {
+			continue
 		}
 		tracks[i] = PlexTrack{
 			ID:     fmt.Sprintf("track_%d", i),
@@ -1907,8 +1893,8 @@ func TestFullLibrarySearchSimulation(t *testing.T) {
 
 	if result != nil {
 		t.Logf("Found match: '%s' by '%s' (ID: %s)", result.Title, result.Artist, result.ID)
-		if result.ID == "197988" {
-		} else {
+		if result.ID != "197988" {
+			t.Logf("match ID %s (not the bonus-track fixture)", result.ID)
 		}
 	} else {
 		t.Logf("✅ FindBestMatch correctly returned no match")
@@ -1952,22 +1938,22 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 	client := &Client{}
 
 	// Test the specific case that's causing issues
-	spotifyTitle := "the lakes - bonus track"
-	spotifyArtist := "Taylor Swift"
+	sourceTitle := "the lakes - bonus track"
+	sourceArtist := "Taylor Swift"
 	plexTitle := "Some Other Song"    // Define the missing variable
 	plexArtist := "Some Other Artist" // Define the missing variable
 
 	t.Logf("Investigating string similarity for:")
-	t.Logf("  Spotify: '%s' by '%s'", spotifyTitle, spotifyArtist)
+	t.Logf("  Source: '%s' by '%s'", sourceTitle, sourceArtist)
 	t.Logf("  Plex:    '%s' by '%s'", plexTitle, plexArtist)
 
 	// Test original similarities
 	titleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(spotifyTitle)),
+		strings.ToLower(strings.TrimSpace(sourceTitle)),
 		strings.ToLower(strings.TrimSpace(plexTitle)),
 	)
 	artistSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(spotifyArtist)),
+		strings.ToLower(strings.TrimSpace(sourceArtist)),
 		strings.ToLower(strings.TrimSpace(plexArtist)),
 	)
 
@@ -1976,23 +1962,23 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 
 	// Test with various transformations
 	cleanTitleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(client.removeBrackets(spotifyTitle))),
+		strings.ToLower(strings.TrimSpace(client.removeBrackets(sourceTitle))),
 		strings.ToLower(strings.TrimSpace(client.removeBrackets(plexTitle))),
 	)
 	featuringTitleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(client.removeFeaturing(spotifyTitle))),
+		strings.ToLower(strings.TrimSpace(client.removeFeaturing(sourceTitle))),
 		strings.ToLower(strings.TrimSpace(client.removeFeaturing(plexTitle))),
 	)
 	normalizedTitleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(client.normalizeTitle(spotifyTitle))),
+		strings.ToLower(strings.TrimSpace(client.normalizeTitle(sourceTitle))),
 		strings.ToLower(strings.TrimSpace(client.normalizeTitle(plexTitle))),
 	)
 	withTitleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(client.removeWith(spotifyTitle))),
+		strings.ToLower(strings.TrimSpace(client.removeWith(sourceTitle))),
 		strings.ToLower(strings.TrimSpace(client.removeWith(plexTitle))),
 	)
 	suffixTitleSimilarity := client.calculateStringSimilarity(
-		strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(spotifyTitle))),
+		strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(sourceTitle))),
 		strings.ToLower(strings.TrimSpace(client.RemoveCommonSuffixes(plexTitle))),
 	)
 
@@ -2003,7 +1989,7 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 	t.Logf("Suffix-removed title similarity: %f", suffixTitleSimilarity)
 
 	// Show the actual transformed strings
-	t.Logf("Suffix-removed Spotify title: '%s'", client.RemoveCommonSuffixes(spotifyTitle))
+	t.Logf("Suffix-removed Source title: '%s'", client.RemoveCommonSuffixes(sourceTitle))
 	t.Logf("Plex title: '%s'", plexTitle)
 
 	// Calculate the best title similarity
@@ -2030,42 +2016,42 @@ func TestTheLakesStringSimilarityInvestigation(t *testing.T) {
 
 	t.Logf("\nInvestigating word-level similarities:")
 
-	spotifyWords := strings.Fields(strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle)))
+	sourceWords := strings.Fields(strings.ToLower(client.RemoveCommonSuffixes(sourceTitle)))
 	plexWords := strings.Fields(strings.ToLower(plexTitle))
 
-	t.Logf("Spotify words: %v", spotifyWords)
+	t.Logf("Source words: %v", sourceWords)
 	t.Logf("Plex words: %v", plexWords)
 
-	for _, spotifyWord := range spotifyWords {
+	for _, sourceWord := range sourceWords {
 		for _, plexWord := range plexWords {
-			wordSimilarity := client.calculateStringSimilarity(spotifyWord, plexWord)
+			wordSimilarity := client.calculateStringSimilarity(sourceWord, plexWord)
 			if wordSimilarity > 0.5 {
-				t.Logf("  High word similarity: '%s' vs '%s' = %f", spotifyWord, plexWord, wordSimilarity)
+				t.Logf("  High word similarity: '%s' vs '%s' = %f", sourceWord, plexWord, wordSimilarity)
 			}
 		}
 	}
 
 	// Test substring matching
-	if strings.Contains(strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle)), strings.ToLower(plexTitle)) {
-		t.Logf("⚠️  Plex title is a substring of Spotify title!")
+	if strings.Contains(strings.ToLower(client.RemoveCommonSuffixes(sourceTitle)), strings.ToLower(plexTitle)) {
+		t.Logf("⚠️  Plex title is a substring of source title!")
 	}
-	if strings.Contains(strings.ToLower(plexTitle), strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle))) {
-		t.Logf("⚠️  Spotify title is a substring of Plex title!")
+	if strings.Contains(strings.ToLower(plexTitle), strings.ToLower(client.RemoveCommonSuffixes(sourceTitle))) {
+		t.Logf("⚠️  source title is a substring of Plex title!")
 	}
 
 	// Test individual word matching
-	spotifyTitleLower := strings.ToLower(client.RemoveCommonSuffixes(spotifyTitle))
+	sourceTitleLower := strings.ToLower(client.RemoveCommonSuffixes(sourceTitle))
 	plexTitleLower := strings.ToLower(plexTitle)
 
-	for _, word := range strings.Fields(spotifyTitleLower) {
+	for _, word := range strings.Fields(sourceTitleLower) {
 		if strings.Contains(plexTitleLower, word) {
-			t.Logf("⚠️  Word '%s' from Spotify title found in Plex title", word)
+			t.Logf("⚠️  Word '%s' from source title found in Plex title", word)
 		}
 	}
 
 	for _, word := range strings.Fields(plexTitleLower) {
-		if strings.Contains(spotifyTitleLower, word) {
-			t.Logf("⚠️  Word '%s' from Plex title found in Spotify title", word)
+		if strings.Contains(sourceTitleLower, word) {
+			t.Logf("⚠️  Word '%s' from Plex title found in source title", word)
 		}
 	}
 }
@@ -2074,7 +2060,7 @@ func TestConfidenceThresholdOptimization(t *testing.T) {
 	client := &Client{}
 
 	// The problematic case
-	problematicSong := spotify.Song{
+	problematicSong := track.Track{
 		Name:   "the lakes - bonus track",
 		Artist: "Taylor Swift",
 	}
@@ -2084,7 +2070,7 @@ func TestConfidenceThresholdOptimization(t *testing.T) {
 	}
 
 	// Calculate confidence for the problematic match
-	confidence := client.calculateConfidence(problematicSong, &koreanTrack, "title_artist")
+	confidence := client.calculateConfidence(problematicSong, &koreanTrack, MatchTypeTitleArtist)
 	t.Logf("Problematic match confidence: %f", confidence)
 
 	// Test different thresholds
@@ -2104,29 +2090,38 @@ func TestConfidenceThresholdOptimization(t *testing.T) {
 	// Test with some legitimate matches to ensure we don't break them
 	legitimateMatches := []struct {
 		name     string
-		spotify  spotify.Song
+		source   track.Track
 		plex     PlexTrack
 		expected bool // whether this should match
 	}{
 		{
 			name:     "Exact match",
+			source:   track.Track{Name: "Same Song", Artist: "Same Artist"},
+			plex:     PlexTrack{Title: "Same Song", Artist: "Same Artist"},
 			expected: true,
 		},
 		{
 			name:     "Case insensitive",
+			source:   track.Track{Name: "Hello", Artist: "World"},
+			plex:     PlexTrack{Title: "hello", Artist: "world"},
 			expected: true,
 		},
 		{
 			name:     "Similar title",
+			source:   track.Track{Name: "Song Title", Artist: "Artist"},
+			plex:     PlexTrack{Title: "Song Title", Artist: "Artist"},
 			expected: true,
 		},
 		{
 			name:     "Different artist",
+			source:   track.Track{Name: "Song", Artist: "Artist A"},
+			plex:     PlexTrack{Title: "Song", Artist: "Artist B"},
 			expected: false,
 		},
 		{
 			name:     "Completely different",
-			spotify:  spotify.Song{Name: "Completely Different Song", Artist: "Different Artist"},
+			source:   track.Track{Name: "Completely Different Song", Artist: "Different Artist"},
+			plex:     PlexTrack{Title: "Other", Artist: "Other Artist"},
 			expected: false,
 		},
 	}
@@ -2135,9 +2130,9 @@ func TestConfidenceThresholdOptimization(t *testing.T) {
 	t.Logf("=========================")
 
 	for _, match := range legitimateMatches {
-		conf := client.calculateConfidence(match.spotify, &match.plex, "title_artist")
+		conf := client.calculateConfidence(match.source, &match.plex, MatchTypeTitleArtist)
 		t.Logf("\n%s:", match.name)
-		t.Logf("  Spotify: '%s' by '%s'", match.spotify.Name, match.spotify.Artist)
+		t.Logf("  Source: '%s' by '%s'", match.source.Name, match.source.Artist)
 		t.Logf("  Plex:    '%s' by '%s'", match.plex.Title, match.plex.Artist)
 		t.Logf("  Confidence: %f", conf)
 		t.Logf("  Expected to match: %t", match.expected)
@@ -2169,11 +2164,11 @@ func TestConfidenceThresholdOptimization(t *testing.T) {
 	brokenLegitimateMatches := 0
 	for _, match := range legitimateMatches {
 		if match.expected {
-			conf := client.calculateConfidence(match.spotify, &match.plex, "title_artist")
+			conf := client.calculateConfidence(match.source, &match.plex, MatchTypeTitleArtist)
 			if conf < minSafeThreshold {
 				brokenLegitimateMatches++
 				t.Logf("⚠️  Threshold %.3f would break legitimate match: '%s' by '%s' (confidence: %f)",
-					minSafeThreshold, match.spotify.Name, match.spotify.Artist, conf)
+					minSafeThreshold, match.source.Name, match.source.Artist, conf)
 			}
 		}
 	}
@@ -2203,7 +2198,7 @@ func TestRealPlexAPIBugInvestigation(t *testing.T) {
 	ctx := context.Background()
 
 	// The problematic song
-	problematicSong := spotify.Song{
+	problematicSong := track.Track{
 		Name:   "the lakes - bonus track",
 		Artist: "Taylor Swift",
 	}
@@ -2244,8 +2239,8 @@ func TestArtistSimilarityCheck(t *testing.T) {
 	// Test cases where titles are similar but artists are different
 	testCases := []struct {
 		name           string
-		spotifyTitle   string
-		spotifyArtist  string
+		sourceTitle    string
+		sourceArtist   string
 		plexTitle      string
 		plexArtist     string
 		shouldMatch    bool
@@ -2253,8 +2248,8 @@ func TestArtistSimilarityCheck(t *testing.T) {
 	}{
 		{
 			name:           "Similar title, different artist - should NOT match",
-			spotifyTitle:   "The Lakes",
-			spotifyArtist:  "Different Artist",
+			sourceTitle:    "The Lakes",
+			sourceArtist:   "Different Artist",
 			plexTitle:      "The Lakes",
 			plexArtist:     "Taylor Swift",
 			shouldMatch:    false,
@@ -2262,8 +2257,8 @@ func TestArtistSimilarityCheck(t *testing.T) {
 		},
 		{
 			name:           "Similar title, similar artist - should match",
-			spotifyTitle:   "The Lakes",
-			spotifyArtist:  "Taylor Swift",
+			sourceTitle:    "The Lakes",
+			sourceArtist:   "Taylor Swift",
 			plexTitle:      "The Lakes",
 			plexArtist:     "Taylor Swift",
 			shouldMatch:    true,
@@ -2271,8 +2266,8 @@ func TestArtistSimilarityCheck(t *testing.T) {
 		},
 		{
 			name:           "Similar title, very different artist - should NOT match",
-			spotifyTitle:   "The Lakes",
-			spotifyArtist:  "Taylor Swift",
+			sourceTitle:    "The Lakes",
+			sourceArtist:   "Taylor Swift",
 			plexTitle:      "The Lakes",
 			plexArtist:     "Completely Different Artist",
 			shouldMatch:    false,
@@ -2280,8 +2275,8 @@ func TestArtistSimilarityCheck(t *testing.T) {
 		},
 		{
 			name:           "Different title, same artist - should NOT match",
-			spotifyTitle:   "Completely Different",
-			spotifyArtist:  "Taylor Swift",
+			sourceTitle:    "Completely Different",
+			sourceArtist:   "Taylor Swift",
 			plexTitle:      "The Lakes",
 			plexArtist:     "Taylor Swift",
 			shouldMatch:    false,
@@ -2301,24 +2296,24 @@ func TestArtistSimilarityCheck(t *testing.T) {
 			}
 
 			// Use FindBestMatch to see if it would match
-			result := client.FindBestMatch(library, tc.spotifyTitle, tc.spotifyArtist)
+			result := client.FindBestMatch(library, tc.sourceTitle, tc.sourceArtist)
 
 			if tc.shouldMatch {
 				if result == nil {
-					t.Errorf("Expected match but got none for '%s' by '%s'", tc.spotifyTitle, tc.spotifyArtist)
+					t.Errorf("Expected match but got none for '%s' by '%s'", tc.sourceTitle, tc.sourceArtist)
 				} else {
 					t.Logf("✅ Correctly matched '%s' by '%s' -> '%s' by '%s'",
-						tc.spotifyTitle, tc.spotifyArtist, result.Title, result.Artist)
+						tc.sourceTitle, tc.sourceArtist, result.Title, result.Artist)
 				}
 			} else {
 				if result != nil {
 					confidence := client.calculateConfidence(
-						spotify.Song{Name: tc.spotifyTitle, Artist: tc.spotifyArtist},
-						result, "title_artist")
+						track.Track{Name: tc.sourceTitle, Artist: tc.sourceArtist},
+						result, MatchTypeTitleArtist)
 					t.Errorf("❌ Expected no match but got '%s' by '%s' (confidence: %f)",
 						result.Title, result.Artist, confidence)
 				} else {
-					t.Logf("✅ Correctly rejected match for '%s' by '%s'", tc.spotifyTitle, tc.spotifyArtist)
+					t.Logf("✅ Correctly rejected match for '%s' by '%s'", tc.sourceTitle, tc.sourceArtist)
 				}
 			}
 		})
@@ -2332,7 +2327,7 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 	// This should test the fourth priority in SearchTrack where featuring removal is used
 	// when no other match priorities are met
 
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		Name:   "Girl, so confusing featuring lorde",
 		Artist: "Charli xcx",
 	}
@@ -2351,17 +2346,17 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 	t.Run("FeaturingRemovalPriority", func(t *testing.T) {
 		// Test that removeFeaturing correctly strips "featuring lorde"
-		featuringRemoved := client.removeFeaturing(spotifySong.Name)
+		featuringRemoved := client.removeFeaturing(srcTrack.Name)
 		expectedTitle := "Girl, so confusing"
 
 		if featuringRemoved != expectedTitle {
 			t.Errorf("removeFeaturing(%q) = %q, expected %q",
-				spotifySong.Name, featuringRemoved, expectedTitle)
+				srcTrack.Name, featuringRemoved, expectedTitle)
 		}
 
 		// Test that the search would find the match using the featuring-removed title
 		// This simulates the fourth priority in SearchTrack method
-		result := client.FindBestMatch(mockLibrary, featuringRemoved, spotifySong.Artist)
+		result := client.FindBestMatch(mockLibrary, featuringRemoved, srcTrack.Artist)
 
 		if result == nil {
 			t.Errorf("FindBestMatch should find '%s' by '%s' when searching with featuring-removed title '%s'",
@@ -2377,9 +2372,9 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Verify that the original title with "featuring" would NOT match
 		// This ensures the featuring removal is necessary for the match
-		originalResult := client.FindBestMatch(mockLibrary, spotifySong.Name, spotifySong.Artist)
+		originalResult := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
 		if originalResult != nil {
-			t.Logf("Note: Original title '%s' also matches, which is acceptable", spotifySong.Name)
+			t.Logf("Note: Original title '%s' also matches, which is acceptable", srcTrack.Name)
 		}
 	})
 
@@ -2399,11 +2394,11 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Test that searching with the full title (including featuring) would fail
 		// This simulates the scenario where no other match priorities work
-		fullTitleResult := client.FindBestMatch(plexLibrary, spotifySong.Name, spotifySong.Artist)
+		fullTitleResult := client.FindBestMatch(plexLibrary, srcTrack.Name, srcTrack.Artist)
 
 		// Test that searching with featuring removed would succeed
-		featuringRemoved := client.removeFeaturing(spotifySong.Name)
-		featuringResult := client.FindBestMatch(plexLibrary, featuringRemoved, spotifySong.Artist)
+		featuringRemoved := client.removeFeaturing(srcTrack.Name)
+		featuringResult := client.FindBestMatch(plexLibrary, featuringRemoved, srcTrack.Artist)
 
 		// Verify that featuring removal enables the match
 		if featuringResult == nil {
@@ -2416,7 +2411,7 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		t.Logf("Full title search result: %v", fullTitleResult != nil)
 		t.Logf("Featuring-removed search result: %v", featuringResult != nil)
-		t.Logf("Featuring removal transforms '%s' to '%s'", spotifySong.Name, featuringRemoved)
+		t.Logf("Featuring removal transforms '%s' to '%s'", srcTrack.Name, featuringRemoved)
 	})
 
 	t.Run("SearchPrioritySimulation", func(t *testing.T) {
@@ -2424,21 +2419,21 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 		// to verify that featuring removal is used as the fourth priority
 
 		// Step 1: Try exact title/artist match (first priority)
-		exactResult := client.FindBestMatch(mockLibrary, spotifySong.Name, spotifySong.Artist)
+		exactResult := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
 		t.Logf("Step 1 (Exact match): %v", exactResult != nil)
 
 		// Step 2: Check for single quotes (second priority) - not applicable here
-		hasSingleQuotes := strings.Contains(spotifySong.Name, "'") || strings.Contains(spotifySong.Artist, "'")
+		hasSingleQuotes := strings.Contains(srcTrack.Name, "'") || strings.Contains(srcTrack.Artist, "'")
 		t.Logf("Step 2 (Single quotes): %v", hasSingleQuotes)
 
 		// Step 3: Try with brackets removed (third priority)
-		bracketsRemoved := client.removeBrackets(spotifySong.Name)
-		bracketsResult := client.FindBestMatch(mockLibrary, bracketsRemoved, spotifySong.Artist)
+		bracketsRemoved := client.removeBrackets(srcTrack.Name)
+		bracketsResult := client.FindBestMatch(mockLibrary, bracketsRemoved, srcTrack.Artist)
 		t.Logf("Step 3 (Brackets removed): %v", bracketsResult != nil)
 
 		// Step 4: Try with featuring removed (fourth priority) - this is what we're testing
-		featuringRemoved := client.removeFeaturing(spotifySong.Name)
-		featuringResult := client.FindBestMatch(mockLibrary, featuringRemoved, spotifySong.Artist)
+		featuringRemoved := client.removeFeaturing(srcTrack.Name)
+		featuringResult := client.FindBestMatch(mockLibrary, featuringRemoved, srcTrack.Artist)
 		t.Logf("Step 4 (Featuring removed): %v", featuringResult != nil)
 
 		// Verify that featuring removal produces the expected title
@@ -2460,11 +2455,11 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 		// Test that the search would produce the expected log message
 		// "searchByTitle: searching for 'Girl, so confusing' by 'Charli xcx', found 1 results"
 
-		featuringRemoved := client.removeFeaturing(spotifySong.Name)
+		featuringRemoved := client.removeFeaturing(srcTrack.Name)
 
 		// Simulate what the log message would look like
 		expectedLogMessage := fmt.Sprintf("searchByTitle: searching for '%s' by '%s', found %d results",
-			featuringRemoved, spotifySong.Artist, len(mockLibrary))
+			featuringRemoved, srcTrack.Artist, len(mockLibrary))
 
 		// Verify the expected log message format
 		if !strings.Contains(expectedLogMessage, "searchByTitle: searching for 'Girl, so confusing' by 'Charli xcx'") {
@@ -2485,7 +2480,7 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Simulate the log message for the original search (0 results)
 		originalLogMessage := fmt.Sprintf("searchByTitle: searching for '%s' by '%s', found %d results",
-			spotifySong.Name, spotifySong.Artist, len(emptyLibrary))
+			srcTrack.Name, srcTrack.Artist, len(emptyLibrary))
 
 		// Verify the original log message format
 		if !strings.Contains(originalLogMessage, "searchByTitle: searching for 'Girl, so confusing featuring lorde' by 'Charli xcx', found 0 results") {
@@ -2493,9 +2488,9 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 		}
 
 		// Now simulate what would happen in the fourth priority (featuring removal)
-		featuringRemoved := client.removeFeaturing(spotifySong.Name)
+		featuringRemoved := client.removeFeaturing(srcTrack.Name)
 		featuringLogMessage := fmt.Sprintf("searchByTitle: searching for '%s' by '%s', found %d results",
-			featuringRemoved, spotifySong.Artist, len(mockLibrary))
+			featuringRemoved, srcTrack.Artist, len(mockLibrary))
 
 		// Verify the featuring-removed log message format
 		if !strings.Contains(featuringLogMessage, "searchByTitle: searching for 'Girl, so confusing' by 'Charli xcx', found 1 results") {
@@ -2512,10 +2507,10 @@ func TestPunctuationMatching(t *testing.T) {
 	client := &Client{}
 
 	// Test case: Different types of punctuation marks that should match
-	// Spotify: "Leigh-Anne" (regular hyphen) vs Plex: "Leigh‐Anne" (en dash)
-	// Spotify: "Stealin' Love" (straight apostrophe) vs Plex: "Stealin' Love" (curly apostrophe)
+	// Source: "Leigh-Anne" (regular hyphen) vs Plex: "Leigh‐Anne" (en dash)
+	// Source: "Stealin' Love" (straight apostrophe) vs Plex: "Stealin' Love" (curly apostrophe)
 
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		Name:   "Stealin' Love",
 		Artist: "Leigh-Anne",
 	}
@@ -2531,19 +2526,19 @@ func TestPunctuationMatching(t *testing.T) {
 	t.Run("PunctuationDifferences", func(t *testing.T) {
 		// Test that the current similarity function doesn't match these
 		titleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifySong.Name)),
+			strings.ToLower(strings.TrimSpace(srcTrack.Name)),
 			strings.ToLower(strings.TrimSpace(plexTrack.Title)),
 		)
 		artistSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifySong.Artist)),
+			strings.ToLower(strings.TrimSpace(srcTrack.Artist)),
 			strings.ToLower(strings.TrimSpace(plexTrack.Artist)),
 		)
 
 		t.Logf("Current title similarity: %f", titleSimilarity)
 		t.Logf("Current artist similarity: %f", artistSimilarity)
-		t.Logf("Spotify title: '%s'", spotifySong.Name)
+		t.Logf("Source title: '%s'", srcTrack.Name)
 		t.Logf("Plex title: '%s'", plexTrack.Title)
-		t.Logf("Spotify artist: '%s'", spotifySong.Artist)
+		t.Logf("Source artist: '%s'", srcTrack.Artist)
 		t.Logf("Plex artist: '%s'", plexTrack.Artist)
 
 		// The current similarity should be low due to punctuation differences
@@ -2556,7 +2551,7 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test with FindBestMatch to see if it would match
 		mockLibrary := []PlexTrack{plexTrack}
-		result := client.FindBestMatch(mockLibrary, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
 
 		if result != nil {
 			t.Logf("Current FindBestMatch found: '%s' by '%s'", result.Title, result.Artist)
@@ -2567,23 +2562,23 @@ func TestPunctuationMatching(t *testing.T) {
 
 	t.Run("NormalizedPunctuationMatching", func(t *testing.T) {
 		// Test with normalized punctuation
-		normalizedSpotifyTitle := client.normalizePunctuation(spotifySong.Name)
-		normalizedSpotifyArtist := client.normalizePunctuation(spotifySong.Artist)
+		normalizedSourceTitle := client.normalizePunctuation(srcTrack.Name)
+		normalizedSourceArtist := client.normalizePunctuation(srcTrack.Artist)
 		normalizedPlexTitle := client.normalizePunctuation(plexTrack.Title)
 		normalizedPlexArtist := client.normalizePunctuation(plexTrack.Artist)
 
-		t.Logf("Normalized Spotify title: '%s'", normalizedSpotifyTitle)
+		t.Logf("Normalized Source title: '%s'", normalizedSourceTitle)
 		t.Logf("Normalized Plex title: '%s'", normalizedPlexTitle)
-		t.Logf("Normalized Spotify artist: '%s'", normalizedSpotifyArtist)
+		t.Logf("Normalized Source artist: '%s'", normalizedSourceArtist)
 		t.Logf("Normalized Plex artist: '%s'", normalizedPlexArtist)
 
 		// Test similarity with normalized punctuation
 		normalizedTitleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(normalizedSpotifyTitle)),
+			strings.ToLower(strings.TrimSpace(normalizedSourceTitle)),
 			strings.ToLower(strings.TrimSpace(normalizedPlexTitle)),
 		)
 		normalizedArtistSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(normalizedSpotifyArtist)),
+			strings.ToLower(strings.TrimSpace(normalizedSourceArtist)),
 			strings.ToLower(strings.TrimSpace(normalizedPlexArtist)),
 		)
 
@@ -2600,7 +2595,7 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test FindBestMatch with normalized strings
 		mockLibrary := []PlexTrack{plexTrack}
-		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, spotifySong.Name, spotifySong.Artist)
+		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, srcTrack.Name, srcTrack.Artist)
 		if normalizedResult == nil {
 			t.Errorf("Expected FindBestMatchWithNormalizedPunctuation to find a match")
 		} else {
@@ -2639,10 +2634,10 @@ func TestPunctuationMatching(t *testing.T) {
 
 	t.Run("ChloeXHalleMultiplicationSymbol", func(t *testing.T) {
 		// Test case for the specific issue: "Chloe x Halle" vs "Chloe × Halle"
-		// Spotify: "Chloe x Halle" (regular 'x')
+		// Source: "Chloe x Halle" (regular 'x')
 		// Plex: "Chloe × Halle" (multiplication symbol ×)
 
-		spotifySong := spotify.Song{
+		srcTrack := track.Track{
 			Name:   "Do It",
 			Artist: "Chloe x Halle",
 		}
@@ -2657,28 +2652,28 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test that without normalization, these don't match well
 		titleSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifySong.Name)),
+			strings.ToLower(strings.TrimSpace(srcTrack.Name)),
 			strings.ToLower(strings.TrimSpace(plexTrack.Title)),
 		)
 		artistSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifySong.Artist)),
+			strings.ToLower(strings.TrimSpace(srcTrack.Artist)),
 			strings.ToLower(strings.TrimSpace(plexTrack.Artist)),
 		)
 
 		t.Logf("Without normalization - Title similarity: %f", titleSimilarity)
 		t.Logf("Without normalization - Artist similarity: %f", artistSimilarity)
-		t.Logf("Spotify artist: '%s'", spotifySong.Artist)
+		t.Logf("Source artist: '%s'", srcTrack.Artist)
 		t.Logf("Plex artist: '%s'", plexTrack.Artist)
 
 		// Test with normalization
-		normalizedSpotifyArtist := client.normalizePunctuation(spotifySong.Artist)
+		normalizedSourceArtist := client.normalizePunctuation(srcTrack.Artist)
 		normalizedPlexArtist := client.normalizePunctuation(plexTrack.Artist)
 
-		t.Logf("Normalized Spotify artist: '%s'", normalizedSpotifyArtist)
+		t.Logf("Normalized Source artist: '%s'", normalizedSourceArtist)
 		t.Logf("Normalized Plex artist: '%s'", normalizedPlexArtist)
 
 		normalizedArtistSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(normalizedSpotifyArtist)),
+			strings.ToLower(strings.TrimSpace(normalizedSourceArtist)),
 			strings.ToLower(strings.TrimSpace(normalizedPlexArtist)),
 		)
 
@@ -2696,7 +2691,7 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test FindBestMatch to see if it would match
 		mockLibrary := []PlexTrack{plexTrack}
-		result := client.FindBestMatch(mockLibrary, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
 
 		if result != nil {
 			t.Logf("FindBestMatch found: '%s' by '%s'", result.Title, result.Artist)
@@ -2705,7 +2700,7 @@ func TestPunctuationMatching(t *testing.T) {
 		}
 
 		// Test FindBestMatchWithNormalizedPunctuation
-		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, spotifySong.Name, spotifySong.Artist)
+		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, srcTrack.Name, srcTrack.Artist)
 		if normalizedResult == nil {
 			t.Errorf("Expected FindBestMatchWithNormalizedPunctuation to find a match")
 		} else {
@@ -2736,11 +2731,11 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 	client := &Client{}
 
 	// Simulate the exact issue described in the user query
-	// Spotify: "Chloe x Halle" (regular 'x')
+	// Source: "Chloe x Halle" (regular 'x')
 	// Plex: "Chloe × Halle" (multiplication symbol ×)
 	// Track: "Do It"
 
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		Name:   "Do It",
 		Artist: "Chloe x Halle",
 	}
@@ -2763,7 +2758,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 
 	t.Run("ExactIssueScenario", func(t *testing.T) {
 		// Test that the correct match is found
-		result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 		if result == nil {
 			t.Errorf("Expected to find a match for 'Do It' by 'Chloe x Halle'")
@@ -2783,7 +2778,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 
 	t.Run("NormalizedPunctuationMatch", func(t *testing.T) {
 		// Test with the normalized punctuation function
-		result := client.FindBestMatchWithNormalizedPunctuation(plexTracks, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatchWithNormalizedPunctuation(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 		if result == nil {
 			t.Errorf("Expected to find a match with normalized punctuation")
@@ -2835,7 +2830,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 
 	t.Run("EllipsisNormalization", func(t *testing.T) {
 		// Test that the Unicode ellipsis character is normalized to three periods
-		// This handles cases like Spotify "DANCE..." vs Plex "DANCE…"
+		// This handles cases like a streaming catalog "DANCE..." vs Plex "DANCE…"
 		normalized := client.normalizePunctuation("DANCE\u2026")
 		expected := "DANCE..."
 
@@ -2847,7 +2842,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 	})
 
 	t.Run("EllipsisMatchingDANCE", func(t *testing.T) {
-		// Test that "DANCE..." (Spotify, three periods) matches "DANCE…" (Plex, Unicode ellipsis)
+		// Test that "DANCE..." (source, three periods) matches "DANCE…" (Plex, Unicode ellipsis)
 		plexTracks := []PlexTrack{
 			{ID: "1", Title: "DANCE\u2026", Artist: "Slayyyter"},
 		}
@@ -2867,12 +2862,11 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 
 	// Test case: Playlist with no description should still get attribution
 	t.Run("EmptyDescriptionWithAttribution", func(t *testing.T) {
-		// Test the addSyncAttribution function directly
 		emptyDescription := ""
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		result := client.addSyncAttribution(emptyDescription, spotifyPlaylistID)
-		expected := "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		result := client.addSyncAttribution(emptyDescription, sourceURL)
+		expected := "synced from music-social: https://music.example.com/playlist/pl_test"
 
 		if result != expected {
 			t.Errorf("Expected attribution for empty description to be '%s', got '%s'", expected, result)
@@ -2882,11 +2876,11 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 	})
 
 	t.Run("EmptyDescriptionWithoutAttribution", func(t *testing.T) {
-		// Test with empty spotifyPlaylistID
+		// Test with empty sourcePlaylistURL
 		emptyDescription := ""
-		emptySpotifyPlaylistID := ""
+		emptySourceURL := ""
 
-		result := client.addSyncAttribution(emptyDescription, emptySpotifyPlaylistID)
+		result := client.addSyncAttribution(emptyDescription, emptySourceURL)
 		expected := ""
 
 		if result != expected {
@@ -2897,12 +2891,11 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 	})
 
 	t.Run("ExistingDescriptionWithAttribution", func(t *testing.T) {
-		// Test with existing description
 		existingDescription := "My awesome playlist"
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		result := client.addSyncAttribution(existingDescription, spotifyPlaylistID)
-		expected := "My awesome playlist\n\nsynced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		result := client.addSyncAttribution(existingDescription, sourceURL)
+		expected := "My awesome playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test"
 
 		if result != expected {
 			t.Errorf("Expected attribution for existing description to be '%s', got '%s'", expected, result)
@@ -2916,16 +2909,11 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 		// This simulates the real-world scenario where a playlist has no description
 
 		// Test parameters
-		description := "" // Empty description
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		description := ""
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		// This would normally make an HTTP request, but we're just testing the logic
-		// The actual HTTP call would fail in a test environment, but we can verify
-		// that the function is called with the correct parameters
-
-		// Test that addSyncAttribution is called correctly
-		expectedDescription := client.addSyncAttribution(description, spotifyPlaylistID)
-		expectedAttribution := "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		expectedDescription := client.addSyncAttribution(description, sourceURL)
+		expectedAttribution := "synced from music-social: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expectedAttribution {
 			t.Errorf("Expected description with attribution to be '%s', got '%s'", expectedAttribution, expectedDescription)
@@ -2939,13 +2927,11 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 	client := &Client{}
 
 	t.Run("NewPlaylistCreationWithMetadata", func(t *testing.T) {
-		// Test that new playlist creation includes metadata with attribution
 		description := "My test playlist"
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		// Test the addSyncAttribution function that CreatePlaylist uses
-		expectedDescription := client.addSyncAttribution(description, spotifyPlaylistID)
-		expected := "My test playlist\n\nsynced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		expectedDescription := client.addSyncAttribution(description, sourceURL)
+		expected := "My test playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected new playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -2955,13 +2941,11 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 	})
 
 	t.Run("NewPlaylistCreationWithEmptyDescription", func(t *testing.T) {
-		// Test that new playlist creation includes attribution even with empty description
-		description := "" // Empty description
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		description := ""
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		// Test the addSyncAttribution function that CreatePlaylist uses
-		expectedDescription := client.addSyncAttribution(description, spotifyPlaylistID)
-		expected := "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		expectedDescription := client.addSyncAttribution(description, sourceURL)
+		expected := "synced from music-social: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected new playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -2971,13 +2955,11 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 	})
 
 	t.Run("ExistingPlaylistSyncWithMetadata", func(t *testing.T) {
-		// Test that existing playlist sync includes metadata with attribution
 		description := "Updated playlist description"
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		// Test the addSyncAttribution function that UpdatePlaylistMetadata uses
-		expectedDescription := client.addSyncAttribution(description, spotifyPlaylistID)
-		expected := "Updated playlist description\n\nsynced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		expectedDescription := client.addSyncAttribution(description, sourceURL)
+		expected := "Updated playlist description\n\nsynced from music-social: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected existing playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -2987,13 +2969,11 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 	})
 
 	t.Run("ExistingPlaylistSyncWithEmptyDescription", func(t *testing.T) {
-		// Test that existing playlist sync includes attribution even with empty description
-		description := "" // Empty description
-		spotifyPlaylistID := "37i9dQZF1DXcBWIGoYBM5M"
+		description := ""
+		sourceURL := "https://music.example.com/playlist/pl_test"
 
-		// Test the addSyncAttribution function that UpdatePlaylistMetadata uses
-		expectedDescription := client.addSyncAttribution(description, spotifyPlaylistID)
-		expected := "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+		expectedDescription := client.addSyncAttribution(description, sourceURL)
+		expected := "synced from music-social: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected existing playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -3006,45 +2986,45 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 		// Test the metadata logic that CreatePlaylist uses
 		testCases := []struct {
 			description       string
-			spotifyPlaylistID string
+			sourcePlaylistURL string
 			shouldAddMetadata bool
 			expectedResult    string
 			scenario          string
 		}{
 			{
 				description:       "My playlist",
-				spotifyPlaylistID: "37i9dQZF1DXcBWIGoYBM5M",
+				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "My playlist\n\nsynced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-				scenario:          "Description + Spotify ID",
+				expectedResult:    "My playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test",
+				scenario:          "Description + source URL",
 			},
 			{
 				description:       "",
-				spotifyPlaylistID: "37i9dQZF1DXcBWIGoYBM5M",
+				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-				scenario:          "Empty description + Spotify ID",
+				expectedResult:    "synced from music-social: https://music.example.com/playlist/pl_test",
+				scenario:          "Empty description + source URL",
 			},
 			{
 				description:       "My playlist",
-				spotifyPlaylistID: "",
+				sourcePlaylistURL: "",
 				shouldAddMetadata: true,
 				expectedResult:    "My playlist",
-				scenario:          "Description + No Spotify ID",
+				scenario:          "Description + No source URL",
 			},
 			{
 				description:       "",
-				spotifyPlaylistID: "",
+				sourcePlaylistURL: "",
 				shouldAddMetadata: false,
 				expectedResult:    "",
-				scenario:          "Empty description + No Spotify ID",
+				scenario:          "Empty description + No source URL",
 			},
 		}
 
 		for _, tc := range testCases {
 			t.Run(tc.scenario, func(t *testing.T) {
 				// Test the condition that CreatePlaylist uses
-				shouldAddMetadata := tc.spotifyPlaylistID != "" || tc.description != ""
+				shouldAddMetadata := tc.sourcePlaylistURL != "" || tc.description != ""
 
 				if shouldAddMetadata != tc.shouldAddMetadata {
 					t.Errorf("Expected shouldAddMetadata to be %v for scenario '%s', got %v",
@@ -3053,7 +3033,7 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 				}
 
 				if shouldAddMetadata {
-					result := client.addSyncAttribution(tc.description, tc.spotifyPlaylistID)
+					result := client.addSyncAttribution(tc.description, tc.sourcePlaylistURL)
 					if result != tc.expectedResult {
 						t.Errorf("Expected result '%s' for scenario '%s', got '%s'",
 							tc.expectedResult, tc.scenario, result)
@@ -3069,45 +3049,45 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 		// Test the metadata logic that UpdatePlaylistMetadata uses
 		testCases := []struct {
 			description       string
-			spotifyPlaylistID string
+			sourcePlaylistURL string
 			shouldAddMetadata bool
 			expectedResult    string
 			scenario          string
 		}{
 			{
 				description:       "Updated playlist",
-				spotifyPlaylistID: "37i9dQZF1DXcBWIGoYBM5M",
+				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "Updated playlist\n\nsynced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-				scenario:          "Description + Spotify ID",
+				expectedResult:    "Updated playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test",
+				scenario:          "Description + source URL",
 			},
 			{
 				description:       "",
-				spotifyPlaylistID: "37i9dQZF1DXcBWIGoYBM5M",
+				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "synced from Spotify: https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M",
-				scenario:          "Empty description + Spotify ID",
+				expectedResult:    "synced from music-social: https://music.example.com/playlist/pl_test",
+				scenario:          "Empty description + source URL",
 			},
 			{
 				description:       "Updated playlist",
-				spotifyPlaylistID: "",
+				sourcePlaylistURL: "",
 				shouldAddMetadata: true,
 				expectedResult:    "Updated playlist",
-				scenario:          "Description + No Spotify ID",
+				scenario:          "Description + No source URL",
 			},
 			{
 				description:       "",
-				spotifyPlaylistID: "",
+				sourcePlaylistURL: "",
 				shouldAddMetadata: false,
 				expectedResult:    "",
-				scenario:          "Empty description + No Spotify ID",
+				scenario:          "Empty description + No source URL",
 			},
 		}
 
 		for _, tc := range testCases {
 			t.Run(tc.scenario, func(t *testing.T) {
 				// Test the condition that UpdatePlaylistMetadata uses
-				shouldAddMetadata := tc.spotifyPlaylistID != "" || tc.description != ""
+				shouldAddMetadata := tc.sourcePlaylistURL != "" || tc.description != ""
 
 				if shouldAddMetadata != tc.shouldAddMetadata {
 					t.Errorf("Expected shouldAddMetadata to be %v for scenario '%s', got %v",
@@ -3116,7 +3096,7 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 				}
 
 				if shouldAddMetadata {
-					result := client.addSyncAttribution(tc.description, tc.spotifyPlaylistID)
+					result := client.addSyncAttribution(tc.description, tc.sourcePlaylistURL)
 					if result != tc.expectedResult {
 						t.Errorf("Expected result '%s' for scenario '%s', got '%s'",
 							tc.expectedResult, tc.scenario, result)
@@ -3133,7 +3113,7 @@ func TestJessieWareSpotlightSingleEditMatching(t *testing.T) {
 	client := &Client{}
 
 	// Test case: "Spotlight - Single Edit" by "Jessie Ware" should match "Spotlight" by "Jessie Ware"
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		Name:   "Spotlight - Single Edit",
 		Artist: "Jessie Ware",
 	}
@@ -3148,13 +3128,13 @@ func TestJessieWareSpotlightSingleEditMatching(t *testing.T) {
 	}
 
 	// Test that the suffix removal works correctly
-	cleanedTitle := client.RemoveCommonSuffixes(spotifySong.Name)
+	cleanedTitle := client.RemoveCommonSuffixes(srcTrack.Name)
 	if cleanedTitle != "Spotlight" {
 		t.Errorf("Expected 'Spotlight' after suffix removal, got '%s'", cleanedTitle)
 	}
 
 	// Test that FindBestMatch can find the track
-	result := client.FindBestMatch(plexLibrary, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(plexLibrary, srcTrack.Name, srcTrack.Artist)
 	if result == nil {
 		t.Errorf("Expected to find match for 'Spotlight - Single Edit' by 'Jessie Ware'")
 	} else {
@@ -3169,7 +3149,7 @@ func TestJessieWareSpotlightSingleEditMatching(t *testing.T) {
 	}
 
 	// Test confidence calculation
-	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 	if confidence < MinConfidenceScore {
 		t.Errorf("Expected high confidence for suffix-removed match, got %f", confidence)
 	}
@@ -3188,8 +3168,8 @@ func TestGetItRightMatchingScenario(t *testing.T) {
 		Album:  "Various Artists Compilation",
 	}
 
-	// Simulate the Spotify song we're trying to match
-	spotifySong := spotify.Song{
+	// Simulate the source track we're trying to match
+	srcTrack := track.Track{
 		Name:   "Get It Right",
 		Artist: "Diplo",
 	}
@@ -3200,33 +3180,33 @@ func TestGetItRightMatchingScenario(t *testing.T) {
 		t.Errorf("removeBrackets(%q) = %q, expected 'Get It Right'", plexTrack.Title, cleanedTitle)
 	}
 
-	// Test string similarity between the cleaned Plex title and Spotify title
+	// Test string similarity between the cleaned Plex title and source title
 	similarity := client.calculateStringSimilarity(
 		strings.ToLower(strings.TrimSpace(cleanedTitle)),
-		strings.ToLower(strings.TrimSpace(spotifySong.Name)),
+		strings.ToLower(strings.TrimSpace(srcTrack.Name)),
 	)
 
-	t.Logf("Similarity between '%s' and '%s': %.3f", cleanedTitle, spotifySong.Name, similarity)
+	t.Logf("Similarity between '%s' and '%s': %.3f", cleanedTitle, srcTrack.Name, similarity)
 
 	if similarity < 0.9 {
-		t.Errorf("Expected high similarity between cleaned Plex title and Spotify title, got %.3f", similarity)
+		t.Errorf("Expected high similarity between cleaned Plex title and source title, got %.3f", similarity)
 	}
 
 	// Test artist similarity
 	artistSimilarity := client.calculateStringSimilarity(
 		strings.ToLower(strings.TrimSpace(plexTrack.Artist)),
-		strings.ToLower(strings.TrimSpace(spotifySong.Artist)),
+		strings.ToLower(strings.TrimSpace(srcTrack.Artist)),
 	)
 
-	t.Logf("Artist similarity between '%s' and '%s': %.3f", plexTrack.Artist, spotifySong.Artist, artistSimilarity)
+	t.Logf("Artist similarity between '%s' and '%s': %.3f", plexTrack.Artist, srcTrack.Artist, artistSimilarity)
 
 	if artistSimilarity < 0.9 {
-		t.Errorf("Expected high similarity between Plex artist and Spotify artist, got %.3f", artistSimilarity)
+		t.Errorf("Expected high similarity between Plex artist and source artist, got %.3f", artistSimilarity)
 	}
 
 	// Test FindBestMatch with the cleaned title
 	tracks := []PlexTrack{plexTrack}
-	result := client.FindBestMatch(tracks, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(tracks, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Get It Right' by 'Diplo'")
@@ -3273,16 +3253,16 @@ func TestGetItRightSearchSimulation(t *testing.T) {
 		},
 	}
 
-	// Simulate the Spotify song we're trying to match
-	spotifySong := spotify.Song{
+	// Simulate the source track we're trying to match
+	srcTrack := track.Track{
 		Name:   "Get It Right",
 		Artist: "Diplo",
 	}
 
-	t.Logf("Searching for '%s' by '%s' among %d results", spotifySong.Name, spotifySong.Artist, len(searchResults))
+	t.Logf("Searching for '%s' by '%s' among %d results", srcTrack.Name, srcTrack.Artist, len(searchResults))
 
 	// Test FindBestMatch with the search results
-	result := client.FindBestMatch(searchResults, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Get It Right' by 'Diplo'")
@@ -3303,13 +3283,13 @@ func TestGetItRightSearchStrategies(t *testing.T) {
 		Album:  "Various Artists Compilation",
 	}
 
-	// Simulate the Spotify song we're trying to match
-	spotifySong := spotify.Song{
+	// Simulate the source track we're trying to match
+	srcTrack := track.Track{
 		Name:   "Get It Right",
 		Artist: "Diplo",
 	}
 
-	t.Logf("Testing search strategies for '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Testing search strategies for '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 	t.Logf("Target Plex track: '%s' by '%s'", plexTrack.Title, plexTrack.Artist)
 
 	// Test each search strategy
@@ -3326,8 +3306,8 @@ func TestGetItRightSearchStrategies(t *testing.T) {
 	}
 
 	for _, strategy := range strategies {
-		modifiedTitle := strategy.fn(spotifySong.Name)
-		t.Logf("Strategy '%s': '%s' -> '%s'", strategy.name, spotifySong.Name, modifiedTitle)
+		modifiedTitle := strategy.fn(srcTrack.Name)
+		t.Logf("Strategy '%s': '%s' -> '%s'", strategy.name, srcTrack.Name, modifiedTitle)
 
 		// Test if the modified title would match the Plex track
 		similarity := client.calculateStringSimilarity(
@@ -3358,19 +3338,19 @@ func TestGetItRightVariousArtistsScenario(t *testing.T) {
 		Album:  "Various Artists Compilation",
 	}
 
-	// Simulate the Spotify song we're trying to match
-	spotifySong := spotify.Song{
+	// Simulate the source track we're trying to match
+	srcTrack := track.Track{
 		Name:   "Get It Right",
 		Artist: "Diplo",
 	}
 
 	t.Logf("Testing Various Artists scenario:")
-	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Source: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 	t.Logf("Plex: '%s' by '%s'", plexTrack.Title, plexTrack.Artist)
 
 	// Test the current matching logic
 	tracks := []PlexTrack{plexTrack}
-	result := client.FindBestMatch(tracks, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(tracks, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Log("❌ FindBestMatch failed to find a match (expected due to artist mismatch)")
@@ -3434,17 +3414,17 @@ func TestGetItRightRealWorldScenario(t *testing.T) {
 		},
 	}
 
-	// Simulate the Spotify song we're trying to match
-	spotifySong := spotify.Song{
+	// Simulate the source track we're trying to match
+	srcTrack := track.Track{
 		Name:   "Get It Right",
 		Artist: "Diplo",
 	}
 
-	t.Logf("Real-world scenario: searching for '%s' by '%s' among %d results", spotifySong.Name, spotifySong.Artist, len(searchResults))
+	t.Logf("Real-world scenario: searching for '%s' by '%s' among %d results", srcTrack.Name, srcTrack.Artist, len(searchResults))
 	t.Logf("Expected match: Track 1 - '%s' by '%s' (Various Artists compilation)", searchResults[0].Title, searchResults[0].Artist)
 
 	// Test FindBestMatch with the search results
-	result := client.FindBestMatch(searchResults, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Get It Right' by 'Diplo' in the Various Artists compilation")
@@ -3462,15 +3442,14 @@ func TestArtistFeaturingRemoval(t *testing.T) {
 	client := &Client{}
 	client.SetDebug(true)
 
-	// Test case: Spotify song "The Field (feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar)" by "Blood Orange"
+	// Test case: source track "The Field (feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar)" by "Blood Orange"
 	// vs Plex track "The Field" by "Blood Orange feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar"
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		ID:       "test_the_field",
 		Name:     "The Field (feat. The Durutti Column, Tariq Al-Sabir, Caroline Polachek & Daniel Caesar)",
 		Artist:   "Blood Orange",
 		Album:    "Test Album",
 		Duration: 240000,
-		URI:      "spotify:track:test_the_field",
 		ISRC:     "TEST22222222",
 	}
 
@@ -3484,7 +3463,7 @@ func TestArtistFeaturingRemoval(t *testing.T) {
 	}
 
 	t.Logf("Testing artist featuring removal:")
-	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Source: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 	t.Logf("Plex: '%s' by '%s'", plexTracks[0].Title, plexTracks[0].Artist)
 
 	// Test the removeFeaturing function on artist
@@ -3495,14 +3474,14 @@ func TestArtistFeaturingRemoval(t *testing.T) {
 	}
 
 	// Test the removeBrackets function on title (to remove featuring in parentheses)
-	cleanedTitle := client.removeBrackets(spotifySong.Name)
+	cleanedTitle := client.removeBrackets(srcTrack.Name)
 	expectedTitle := "The Field"
 	if cleanedTitle != expectedTitle {
-		t.Errorf("removeBrackets(%q) = %q, expected %q", spotifySong.Name, cleanedTitle, expectedTitle)
+		t.Errorf("removeBrackets(%q) = %q, expected %q", srcTrack.Name, cleanedTitle, expectedTitle)
 	}
 
 	// Test FindBestMatch
-	result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'The Field' by 'Blood Orange'")
@@ -3511,7 +3490,7 @@ func TestArtistFeaturingRemoval(t *testing.T) {
 	}
 
 	// Test that the match has high confidence
-	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 	t.Logf("Match confidence: %.3f", confidence)
 
 	if confidence < 0.9 {
@@ -3523,9 +3502,9 @@ func TestRemixWithFeaturingMatching(t *testing.T) {
 	client := &Client{}
 	client.SetDebug(true)
 
-	// Test case: Spotify "Timeless (feat. Playboi Carti & Doechii) - Remix" by "The Weeknd"
+	// Test case: source "Timeless (feat. Playboi Carti & Doechii) - Remix" by "The Weeknd"
 	// should match Plex "Timeless (remix)" by "The Weeknd"
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		Name:   "Timeless (feat. Playboi Carti & Doechii) - Remix",
 		Artist: "The Weeknd",
 	}
@@ -3539,15 +3518,15 @@ func TestRemixWithFeaturingMatching(t *testing.T) {
 	}
 
 	t.Logf("Testing remix with featuring removal:")
-	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Source: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 	t.Logf("Plex: '%s' by '%s'", plexTracks[0].Title, plexTracks[0].Artist)
 
 	// Test the transformation chain:
 	// 1. removeFeaturing: "Timeless (feat. Playboi Carti & Doechii) - Remix" -> "Timeless - Remix"
-	featuringRemoved := client.removeFeaturing(spotifySong.Name)
+	featuringRemoved := client.removeFeaturing(srcTrack.Name)
 	expectedAfterFeaturing := "Timeless - Remix"
 	if featuringRemoved != expectedAfterFeaturing {
-		t.Errorf("removeFeaturing(%q) = %q, expected %q", spotifySong.Name, featuringRemoved, expectedAfterFeaturing)
+		t.Errorf("removeFeaturing(%q) = %q, expected %q", srcTrack.Name, featuringRemoved, expectedAfterFeaturing)
 	}
 	t.Logf("After removeFeaturing: '%s'", featuringRemoved)
 
@@ -3573,7 +3552,7 @@ func TestRemixWithFeaturingMatching(t *testing.T) {
 	}
 
 	// Test FindBestMatch
-	result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Timeless (feat. Playboi Carti & Doechii) - Remix' by 'The Weeknd'")
@@ -3591,7 +3570,7 @@ func TestRemixWithFeaturingMatching(t *testing.T) {
 	// Test that the match has reasonable confidence
 	// Note: confidence uses original titles, so it will be lower than the FindBestMatch score
 	// which applies transformations. The key test is that FindBestMatch succeeded.
-	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 	t.Logf("Match confidence: %.3f", confidence)
 
 	if confidence < 0.6 {
@@ -3603,9 +3582,9 @@ func TestMovieSoundtrackMatching(t *testing.T) {
 	client := &Client{}
 	client.SetDebug(true)
 
-	// Test case: Spotify "Friend Of Mine - from the Smurfs Movie Soundtrack" by "Greyson Chance"
+	// Test case: source "Friend Of Mine - from the Smurfs Movie Soundtrack" by "Greyson Chance"
 	// should match Plex "Friend Of Mine" by "Greyson Chance"
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		Name:   "Friend Of Mine - from the Smurfs Movie Soundtrack",
 		Artist: "Greyson Chance",
 	}
@@ -3619,19 +3598,19 @@ func TestMovieSoundtrackMatching(t *testing.T) {
 	}
 
 	t.Logf("Testing movie soundtrack suffix removal:")
-	t.Logf("Spotify: '%s' by '%s'", spotifySong.Name, spotifySong.Artist)
+	t.Logf("Source: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
 	t.Logf("Plex: '%s' by '%s'", plexTracks[0].Title, plexTracks[0].Artist)
 
 	// Test RemoveCommonSuffixes removes the soundtrack suffix
-	cleanedTitle := client.RemoveCommonSuffixes(spotifySong.Name)
+	cleanedTitle := client.RemoveCommonSuffixes(srcTrack.Name)
 	expectedCleanedTitle := "Friend Of Mine"
 	if cleanedTitle != expectedCleanedTitle {
-		t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", spotifySong.Name, cleanedTitle, expectedCleanedTitle)
+		t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q", srcTrack.Name, cleanedTitle, expectedCleanedTitle)
 	}
 	t.Logf("After RemoveCommonSuffixes: '%s'", cleanedTitle)
 
 	// Test FindBestMatch
-	result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Friend Of Mine - from the Smurfs Movie Soundtrack' by 'Greyson Chance'")
@@ -3647,7 +3626,7 @@ func TestMovieSoundtrackMatching(t *testing.T) {
 	}
 
 	// Test that the match has reasonable confidence
-	confidence := client.calculateConfidence(spotifySong, result, "title_artist")
+	confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
 	t.Logf("Match confidence: %.3f", confidence)
 
 	if confidence < 0.6 {
@@ -3685,13 +3664,12 @@ func TestMovieSoundtrackVariations(t *testing.T) {
 func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 	client := &Client{}
 
-	spotifySong := spotify.Song{
+	srcTrack := track.Track{
 		ID:       "test_save_the_day",
 		Name:     `Save The Day - From "Hoppers"`,
 		Artist:   "SZA",
 		Album:    "Hoppers (Original Motion Picture Soundtrack)",
 		Duration: 210000,
-		URI:      "spotify:track:test_save_the_day",
 		ISRC:     "TEST22222222",
 	}
 
@@ -3711,10 +3689,10 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 	}
 
 	t.Run("SuffixRemoval", func(t *testing.T) {
-		cleaned := client.RemoveCommonSuffixes(spotifySong.Name)
+		cleaned := client.RemoveCommonSuffixes(srcTrack.Name)
 		if cleaned != "Save The Day" {
 			t.Errorf("RemoveCommonSuffixes(%q) = %q, expected %q",
-				spotifySong.Name, cleaned, "Save The Day")
+				srcTrack.Name, cleaned, "Save The Day")
 		}
 	})
 
@@ -3738,7 +3716,7 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 	})
 
 	t.Run("FindBestMatchFindsCorrectTrack", func(t *testing.T) {
-		result := client.FindBestMatch(plexTracks, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
 
 		if result == nil {
 			t.Fatal("Expected to find a match, got nil")
@@ -3753,8 +3731,8 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 	})
 
 	t.Run("FindBestMatchWithSuffixRemovedTitle", func(t *testing.T) {
-		cleanedTitle := client.RemoveCommonSuffixes(spotifySong.Name)
-		result := client.FindBestMatch(plexTracks, cleanedTitle, spotifySong.Artist)
+		cleanedTitle := client.RemoveCommonSuffixes(srcTrack.Name)
+		result := client.FindBestMatch(plexTracks, cleanedTitle, srcTrack.Artist)
 
 		if result == nil {
 			t.Fatal("Expected to find a match with cleaned title, got nil")
@@ -3766,21 +3744,21 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 	})
 
 	t.Run("SimilarityScores", func(t *testing.T) {
-		spotifyTitle := spotifySong.Name
+		sourceTitle := srcTrack.Name
 		plexTitle := "Save the Day"
 
 		originalSimilarity := client.calculateStringSimilarity(
-			strings.ToLower(strings.TrimSpace(spotifyTitle)),
+			strings.ToLower(strings.TrimSpace(sourceTitle)),
 			strings.ToLower(strings.TrimSpace(plexTitle)),
 		)
 
-		suffixRemoved := client.RemoveCommonSuffixes(spotifyTitle)
+		suffixRemoved := client.RemoveCommonSuffixes(sourceTitle)
 		cleanedSimilarity := client.calculateStringSimilarity(
 			strings.ToLower(strings.TrimSpace(suffixRemoved)),
 			strings.ToLower(strings.TrimSpace(plexTitle)),
 		)
 
-		t.Logf("Original similarity:       %.3f ('%s' vs '%s')", originalSimilarity, spotifyTitle, plexTitle)
+		t.Logf("Original similarity:       %.3f ('%s' vs '%s')", originalSimilarity, sourceTitle, plexTitle)
 		t.Logf("Suffix-removed similarity:  %.3f ('%s' vs '%s')", cleanedSimilarity, suffixRemoved, plexTitle)
 
 		if cleanedSimilarity <= originalSimilarity {
@@ -3800,7 +3778,7 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 			Artist: "SZA",
 		}
 
-		confidence := client.calculateConfidence(spotifySong, plexTrack, "title_artist")
+		confidence := client.calculateConfidence(srcTrack, plexTrack, MatchTypeTitleArtist)
 		t.Logf("Confidence: %.3f (threshold: %.3f)", confidence, MinConfidenceScore)
 
 		if confidence < MinConfidenceScore {
@@ -3819,7 +3797,7 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(wrongTracks, spotifySong.Name, spotifySong.Artist)
+		result := client.FindBestMatch(wrongTracks, srcTrack.Name, srcTrack.Artist)
 		if result != nil {
 			t.Errorf("Should not match unrelated track, but matched '%s' by '%s'",
 				result.Title, result.Artist)

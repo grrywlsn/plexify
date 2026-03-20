@@ -1,14 +1,13 @@
 # Plexify Makefile
 # Build and development tools for the Plexify application
 
-.PHONY: help build run test clean deps format vet setup build-release build-all-platforms
+.PHONY: help build run test clean deps format vet lint setup build-release build-all-platforms
 
 # Default target
 .DEFAULT_GOAL := help
 
 # Variables
 BINARY_NAME := plexify
-BUILD_DIR := bin
 DIST_DIR := dist
 MAIN_FILE := main.go
 VERSION ?= $(shell git describe --tags --always --dirty)
@@ -16,7 +15,7 @@ LDFLAGS := -ldflags="-s -w -X main.version=$(VERSION)"
 
 # Help target
 help: ## Show this help message
-	@echo "Plexify - Spotify to Plex Playlist Sync Tool"
+	@echo "Plexify - music-social to Plex playlist sync"
 	@echo ""
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -31,9 +30,8 @@ help: ## Show this help message
 # Build targets
 build: ## Build the application for current platform
 	@echo "Building $(BINARY_NAME)..."
-	@mkdir -p $(BUILD_DIR)
-	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_FILE)
-	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
+	go build $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_FILE)
+	@echo "Build complete: ./$(BINARY_NAME)"
 
 build-release: build-all-platforms ## Build the application with release optimizations for all platforms
 	@echo "Release builds complete in $(DIST_DIR)/"
@@ -61,7 +59,7 @@ build-all-platforms: ## Build for all supported platforms
 
 # Run targets
 run: build ## Run the application
-	./$(BUILD_DIR)/$(BINARY_NAME)
+	./$(BINARY_NAME)
 
 run-playlist: build ## Run with a specific playlist ID (set PLAYLIST_ID=your_playlist_id)
 	@if [ -z "$(PLAYLIST_ID)" ]; then \
@@ -69,7 +67,7 @@ run-playlist: build ## Run with a specific playlist ID (set PLAYLIST_ID=your_pla
 		exit 1; \
 	fi
 	@echo "Running $(BINARY_NAME) with playlist ID: $(PLAYLIST_ID)"
-	./$(BUILD_DIR)/$(BINARY_NAME) -SPOTIFY_PLAYLIST_ID $(PLAYLIST_ID)
+	./$(BINARY_NAME) -MUSIC_SOCIAL_PLAYLIST_ID $(PLAYLIST_ID)
 
 run-username: build ## Run with a specific username (set USERNAME=your_username)
 	@if [ -z "$(USERNAME)" ]; then \
@@ -77,7 +75,7 @@ run-username: build ## Run with a specific username (set USERNAME=your_username)
 		exit 1; \
 	fi
 	@echo "Running $(BINARY_NAME) with username: $(USERNAME)"
-	./$(BUILD_DIR)/$(BINARY_NAME) -SPOTIFY_USERNAME $(USERNAME)
+	./$(BINARY_NAME) -MUSIC_SOCIAL_USERNAME $(USERNAME)
 
 # Development targets
 deps: ## Install and tidy dependencies
@@ -109,6 +107,14 @@ vet: ## Vet the code
 	@echo "Vetting code..."
 	go vet ./...
 
+lint: ## Run golangci-lint (v1.64.x via go run if not on PATH; matches .golangci.yml)
+	@echo "Running golangci-lint..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...; \
+	fi
+
 # Setup targets
 setup: deps ## Setup development environment
 	@echo "Development environment setup complete!"
@@ -122,7 +128,7 @@ setup: deps ## Setup development environment
 # Cleanup targets
 clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."
-	rm -rf $(BUILD_DIR)/
+	rm -f $(BINARY_NAME)
 	rm -rf $(DIST_DIR)/
 	rm -f coverage.out coverage.html
 	@echo "Clean complete"
@@ -145,7 +151,7 @@ version: ## Show version information
 	@echo "Dependencies:"
 	go list -m all
 
-check: format vet test ## Run all code quality checks
+check: format vet test ## Run all code quality checks (use 'make lint' if golangci-lint is installed)
 	@echo "All checks passed!"
 
 # Development workflow
