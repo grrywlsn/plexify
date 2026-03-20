@@ -315,8 +315,12 @@ func (app *Application) displayMissingTracksSummary(missingTracks []plex.MatchRe
 		} else {
 			fmt.Printf("     ISRC: (not available)\n")
 		}
-		if st.MusicBrainzID != "" {
+		if st.MusicBrainzReleaseGroupID != "" {
+			fmt.Printf("     MusicBrainz release group: %s - https://musicbrainz.org/release-group/%s\n", st.MusicBrainzReleaseGroupID, st.MusicBrainzReleaseGroupID)
+		} else if st.MusicBrainzID != "" {
 			fmt.Printf("     MusicBrainz ID: %s - https://musicbrainz.org/recording/%s\n", st.MusicBrainzID, st.MusicBrainzID)
+		} else if h := track.HarmonyAddToMusicBrainzURL(st.SpotifyAlbumURI, st.AppleMusicAlbumID); h != "" {
+			fmt.Printf("     Add to MusicBrainz: %s\n", h)
 		}
 		if i < len(missingTracks)-1 {
 			fmt.Println()

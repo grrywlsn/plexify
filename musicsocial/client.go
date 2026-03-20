@@ -75,17 +75,29 @@ type playlistJSONDoc struct {
 }
 
 type playlistTrackDTO struct {
-	Position   int         `json:"position"`
-	Title      string      `json:"title"`
-	Artist     string      `json:"artist"`
-	Album      string      `json:"album,omitempty"`
-	DurationMS int         `json:"duration_ms,omitempty"`
-	MB         *mbTrackDTO `json:"musicbrainz,omitempty"`
+	Position   int              `json:"position"`
+	Title      string           `json:"title"`
+	Artist     string           `json:"artist"`
+	Album      string           `json:"album,omitempty"`
+	DurationMS int              `json:"duration_ms,omitempty"`
+	MB         *mbTrackDTO      `json:"musicbrainz,omitempty"`
+	Spotify    *spotifyTrackDTO `json:"spotify,omitempty"`
+	AppleMusic *appleMusicDTO   `json:"apple_music,omitempty"`
+}
+
+type spotifyTrackDTO struct {
+	TrackURI string `json:"track_uri,omitempty"`
+	AlbumURI string `json:"album_uri,omitempty"`
+}
+
+type appleMusicDTO struct {
+	AlbumID string `json:"album_id"`
 }
 
 type mbTrackDTO struct {
-	TrackGID string   `json:"track_gid"`
-	ISRCs    []string `json:"isrcs,omitempty"`
+	TrackGID        string   `json:"track_gid"`
+	ReleaseGroupGID string   `json:"release_group_gid,omitempty"`
+	ISRCs           []string `json:"isrcs,omitempty"`
 }
 
 // ListUserPlaylists returns public playlists for username.
@@ -150,9 +162,16 @@ func (c *Client) GetPlaylist(playlistID string) (*Playlist, error) {
 		}
 		if tj.MB != nil {
 			tr.MusicBrainzID = tj.MB.TrackGID
+			tr.MusicBrainzReleaseGroupID = tj.MB.ReleaseGroupGID
 			if len(tj.MB.ISRCs) > 0 {
 				tr.ISRC = tj.MB.ISRCs[0]
 			}
+		}
+		if tj.Spotify != nil {
+			tr.SpotifyAlbumURI = tj.Spotify.AlbumURI
+		}
+		if tj.AppleMusic != nil {
+			tr.AppleMusicAlbumID = tj.AppleMusic.AlbumID
 		}
 		tracks = append(tracks, tr)
 	}
