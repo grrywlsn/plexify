@@ -144,7 +144,7 @@ func (c *Client) EnsurePlaylistAndSync(ctx context.Context, playlistName, descri
 		playlist = existing
 		slog.InfoContext(ctx, "found existing playlist",
 			"title", existing.Title, "id", existing.ID, "track_count", existing.TrackCount)
-		slog.InfoContext(ctx, "syncing playlist to match music-social source")
+		slog.InfoContext(ctx, "syncing playlist to match source")
 		if err := c.UpdatePlaylistMetadata(ctx, existing.ID, playlistName, description, sourcePlaylistURL); err != nil {
 			slog.InfoContext(ctx, "playlist metadata update failed", "err", err)
 		} else {

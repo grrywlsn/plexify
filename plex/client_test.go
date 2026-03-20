@@ -499,13 +499,13 @@ func TestAddSyncAttribution(t *testing.T) {
 	srcURL := "https://music.example.com/playlist/abc123"
 
 	result := client.addSyncAttribution("", srcURL)
-	expected := "synced from music-social: " + srcURL
+	expected := "synced from music-social.com: " + srcURL
 	if result != expected {
 		t.Errorf("Expected sync attribution to be '%s', got '%s'", expected, result)
 	}
 
 	result = client.addSyncAttribution("Original description", srcURL)
-	expected = "Original description\n\nsynced from music-social: " + srcURL
+	expected = "Original description\n\nsynced from music-social.com: " + srcURL
 	if result != expected {
 		t.Errorf("Expected sync attribution to be '%s', got '%s'", expected, result)
 	}
@@ -2871,7 +2871,7 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		result := client.addSyncAttribution(emptyDescription, sourceURL)
-		expected := "synced from music-social: https://music.example.com/playlist/pl_test"
+		expected := "synced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if result != expected {
 			t.Errorf("Expected attribution for empty description to be '%s', got '%s'", expected, result)
@@ -2900,7 +2900,7 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		result := client.addSyncAttribution(existingDescription, sourceURL)
-		expected := "My awesome playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test"
+		expected := "My awesome playlist\n\nsynced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if result != expected {
 			t.Errorf("Expected attribution for existing description to be '%s', got '%s'", expected, result)
@@ -2918,7 +2918,7 @@ func TestPlaylistSyncAttribution(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		expectedDescription := client.addSyncAttribution(description, sourceURL)
-		expectedAttribution := "synced from music-social: https://music.example.com/playlist/pl_test"
+		expectedAttribution := "synced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expectedAttribution {
 			t.Errorf("Expected description with attribution to be '%s', got '%s'", expectedAttribution, expectedDescription)
@@ -2936,7 +2936,7 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		expectedDescription := client.addSyncAttribution(description, sourceURL)
-		expected := "My test playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test"
+		expected := "My test playlist\n\nsynced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected new playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -2950,7 +2950,7 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		expectedDescription := client.addSyncAttribution(description, sourceURL)
-		expected := "synced from music-social: https://music.example.com/playlist/pl_test"
+		expected := "synced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected new playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -2964,7 +2964,7 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		expectedDescription := client.addSyncAttribution(description, sourceURL)
-		expected := "Updated playlist description\n\nsynced from music-social: https://music.example.com/playlist/pl_test"
+		expected := "Updated playlist description\n\nsynced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected existing playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -2978,7 +2978,7 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 		sourceURL := "https://music.example.com/playlist/pl_test"
 
 		expectedDescription := client.addSyncAttribution(description, sourceURL)
-		expected := "synced from music-social: https://music.example.com/playlist/pl_test"
+		expected := "synced from music-social.com: https://music.example.com/playlist/pl_test"
 
 		if expectedDescription != expected {
 			t.Errorf("Expected existing playlist description to be '%s', got '%s'", expected, expectedDescription)
@@ -3000,14 +3000,14 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 				description:       "My playlist",
 				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "My playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test",
+				expectedResult:    "My playlist\n\nsynced from music-social.com: https://music.example.com/playlist/pl_test",
 				scenario:          "Description + source URL",
 			},
 			{
 				description:       "",
 				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "synced from music-social: https://music.example.com/playlist/pl_test",
+				expectedResult:    "synced from music-social.com: https://music.example.com/playlist/pl_test",
 				scenario:          "Empty description + source URL",
 			},
 			{
@@ -3063,14 +3063,14 @@ func TestPlaylistMetadataUpdateScenarios(t *testing.T) {
 				description:       "Updated playlist",
 				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "Updated playlist\n\nsynced from music-social: https://music.example.com/playlist/pl_test",
+				expectedResult:    "Updated playlist\n\nsynced from music-social.com: https://music.example.com/playlist/pl_test",
 				scenario:          "Description + source URL",
 			},
 			{
 				description:       "",
 				sourcePlaylistURL: "https://music.example.com/playlist/pl_test",
 				shouldAddMetadata: true,
-				expectedResult:    "synced from music-social: https://music.example.com/playlist/pl_test",
+				expectedResult:    "synced from music-social.com: https://music.example.com/playlist/pl_test",
 				scenario:          "Empty description + source URL",
 			},
 			{

@@ -1,21 +1,21 @@
 # Plexify
 
-A tool to sync playlists from a **[music-social](https://github.com/mastodon-site/musicsocial)** instance into Plex.
+A tool to sync playlists from **[music-social.com](https://music-social.com)** into a Plex music library. [music-social.com](https://music-social.com) is a third-party service many Plexify users already use; it can aggregate playlists from sources such as Spotify and Apple Music.
 
-Run it as a CLI or on a schedule (e.g. cron). The catalog is read from your music-social instance over HTTPS; you only need Plex credentials plus `MUSIC_SOCIAL_URL`.
+Run it as a CLI or on a schedule (e.g. cron). By default Plexify uses **https://music-social.com**. You need Plex credentials plus a music-social.com username or playlist id(s); set `MUSIC_SOCIAL_URL` only if you use another compatible API base (e.g. self-hosted).
 
-**Stateless:** Each run is independent. Plexify does not write a local database, cache file, or sync manifest. It reads the current music-social playlists, matches against Plex, and updates Plex playlists over the API. The only durable “state” is whatever Plex already stores for those playlists. Optional `.env` in the working directory is just configuration input (same as environment variables), not application state carried between runs.
+**Stateless:** Each run is independent. Plexify does not write a local database, cache file, or sync manifest. It reads the current source playlists from the configured API, matches against Plex, and updates Plex playlists over the API. The only durable “state” is whatever Plex already stores for those playlists. Optional `.env` in the working directory is just configuration input (same as environment variables).
 
 > [!IMPORTANT]
-> **Public vs unlisted:** `MUSIC_SOCIAL_USERNAME` only discovers playlists that are **public** on the server (the same set as `GET /users/{username}/playlists.json`). **Unlisted** playlists are not listed there; add their ids explicitly with `MUSIC_SOCIAL_PLAYLIST_ID`.
+> **Public vs unlisted:** `MUSIC_SOCIAL_USERNAME` only discovers playlists that are **public** on the service (the same set as `GET /users/{username}/playlists.json`). **Unlisted** playlists are not listed there; add their ids explicitly with `MUSIC_SOCIAL_PLAYLIST_ID`.
 
 ## Features
 
-- Fetch tracks from music-social playlists over HTTPS (JSON API)
+- Fetch tracks from music-social.com playlists
 - Supply a **username** (all public playlists), **playlist id(s)**, or both (merged and deduplicated)
-- Use track metadata from music-social (title, artist, album, duration; MusicBrainz ISRC/MBID when present)
-- Match source tracks to your Plex music library [using the same rules as before](#matching-order-and-rules)
-- Create or update Plex playlists; playlist summary includes a line like `synced from music-social: <url>`
+- Use track metadata from the source API (title, artist, album, duration; MusicBrainz ISRC/MBID when present)
+- Match source tracks to your Plex music library [using the same rules outlined here](#matching-order-and-rules)
+- Create or update Plex playlists; playlist summary includes a line like `synced from music-social.com: <url>`
 - **Stateless** — no on-disk sync state; safe for ephemeral containers and cron without volumes
 - **Playlist change preview** — before rewriting a Plex playlist, prints a git-style diff (adds / removals / substitutions) comparing current Plex items to the desired list under **SUMMARY**; then sync runs as before
 
@@ -23,7 +23,7 @@ Run it as a CLI or on a schedule (e.g. cron). The catalog is read from your musi
 
 After matching tracks to your library, Plexify fetches the existing playlist’s items (if the playlist already exists), compares **ordered** `ratingKey` lists with an LCS-based diff, and prints a **PLAYLIST CHANGES** subsection inside **SUMMARY** (before **MISSING TRACKS SUMMARY** when there are gaps):
 
-- Green `+`: tracks to add (music-social source line + matched Plex line + confidence as a percentage, e.g. `80%`)
+- Green `+`: tracks to add (source line labeled `music-social.com` + matched Plex line + confidence as a percentage, e.g. `80%`)
 - Red `-`: tracks to remove (Plex line only)
 - Yellow `~`: substitution when a delete+insert pair is coalesced (previous Plex track → new source + new Plex + confidence %)
 
@@ -33,15 +33,15 @@ Because Plexify is stateless, it cannot highlight “same Plex track, different 
 
 ### If the wrong Plex playlist updates (or yours never changes)
 
-Plexify is **authoritative** for each music-social playlist: it **creates** a Plex playlist if none matches the title, or **replaces** the contents of the matching one (clear + re-add). It does not require a manual Plex playlist id.
+Plexify is **authoritative** for each source playlist: it **creates** a Plex playlist if none matches the title, or **replaces** the contents of the matching one (clear + re-add). It does not require a manual Plex playlist id.
 
 - **Dry-run:** `PLEXIFY_DRY_RUN=true` (or `-dry-run`) only prints the diff; it does not clear or add tracks on Plex.
-- **Title match:** The Plex target is the playlist whose **title** equals the music-social playlist name (leading/trailing spaces ignored). If you have **two** Plex playlists with the same name, the first one returned by the server is updated—remove or rename the duplicate so only one matches.
+- **Title match:** The Plex target is the playlist whose **title** equals the source playlist name (leading/trailing spaces ignored). If you have **two** Plex playlists with the same name, the first one returned by the server is updated—remove or rename the duplicate so only one matches.
 - **Playlist listing:** Plex’s `GET /playlists` response is paginated; Plexify loads all pages so an older playlist is not missed when resolving by title.
 
 ## Prerequisites
 
-- A reachable **music-social** deployment and its HTTPS base URL
+- A [music-social.com](https://music-social.com) account (or another host exposing the same JSON API), unless you rely on the default `https://music-social.com`
 - Plex Media Server with a music library and an `X-Plex-Token`
 
 ## Quick Start
@@ -71,20 +71,21 @@ wget https://github.com/grrywlsn/plexify/releases/latest/download/plexify-darwin
 **Windows:**
 Download `plexify-windows-amd64.exe` from the [releases page](https://github.com/grrywlsn/plexify/releases) and rename to `plexify.exe`
 
-### 2. music-social URL
+### 2. music-social.com API base (`MUSIC_SOCIAL_URL`)
 
-Set `MUSIC_SOCIAL_URL` to the **origin** of your instance (scheme + host, optional path prefix), for example `https://music.example.com`. Plexify calls:
+**Default:** `https://music-social.com` — you can omit `MUSIC_SOCIAL_URL` if you use the public service.
+
+**Override:** set `MUSIC_SOCIAL_URL` to the **origin** you want (scheme + host, optional path prefix), e.g. a self-hosted compatible deployment at `https://music.example.com`. Plexify calls:
 
 - `GET {MUSIC_SOCIAL_URL}/users/{username}/playlists.json`
 - `GET {MUSIC_SOCIAL_URL}/playlist/{id}.json`
 
-No API token is required for these read-only endpoints on a typical music-social deployment.
+No API token is required for these read-only endpoints on music-social.com or a typical compatible host.
 
-**Docker example:**
+**Docker example** (defaults to music-social.com; omit `MUSIC_SOCIAL_URL` or set it explicitly):
 
 ```bash
 docker run --rm \
-  -e MUSIC_SOCIAL_URL='https://music.example.com' \
   -e MUSIC_SOCIAL_USERNAME='your_user' \
   -e PLEX_URL='http://plex:32400' \
   -e PLEX_TOKEN='your_token' \
@@ -122,8 +123,8 @@ Copy `env.template` to `.env` for a full annotated example. Values load from the
 #### Example `.env` (minimal)
 
 ```env
-# music-social (required)
-MUSIC_SOCIAL_URL=https://your-music-social.example.com
+# music-social.com API base (optional; default is https://music-social.com)
+# MUSIC_SOCIAL_URL=https://music-social.com
 
 # Plex (required)
 PLEX_URL=http://your_plex_server:32400
@@ -135,7 +136,7 @@ PLEX_LIBRARY_SECTION_ID=your_music_library_section_id
 # Option 1: all public playlists for this account username
 MUSIC_SOCIAL_USERNAME=your_username
 
-# Option 2: comma-separated playlist ids from music-social
+# Option 2: comma-separated playlist ids (same ids as in the music-social.com playlist URL)
 MUSIC_SOCIAL_PLAYLIST_ID=pl_abc123,pl_def456
 
 # Optional: exclude ids when using USERNAME (or when merging lists)
@@ -151,7 +152,7 @@ Boolean variables treat `1`, `true`, `yes`, and `on` (case-insensitive) as true;
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `MUSIC_SOCIAL_URL` | _(required)_ | HTTPS base URL of the music-social instance (no trailing slash required). |
+| `MUSIC_SOCIAL_URL` | `https://music-social.com` | HTTPS base URL of the music-social.com API (or a compatible host). No trailing slash required. |
 | `MUSIC_SOCIAL_USERNAME` | empty | List all **public** playlists for this user. At least one of this or `MUSIC_SOCIAL_PLAYLIST_ID` is required. |
 | `MUSIC_SOCIAL_PLAYLIST_ID` | empty | Comma-separated playlist IDs (can combine with username). |
 | `MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID` | empty | Comma-separated playlist IDs to skip. |
@@ -187,7 +188,6 @@ Environment variables, a `.env` file, or flags (same names, e.g. `-MUSIC_SOCIAL_
 
 ```bash
 ./plexify \
-  -MUSIC_SOCIAL_URL=https://music.example.com \
   -MUSIC_SOCIAL_PLAYLIST_ID=pl_abc123 \
   -PLEX_URL=http://your_plex_server:32400 \
   -PLEX_TOKEN=your_plex_token_here \
@@ -196,7 +196,7 @@ Environment variables, a `.env` file, or flags (same names, e.g. `-MUSIC_SOCIAL_
 
 ### 5. Finding playlists
 
-Playlist ids are the same as in the music-social UI URL: `https://your-instance/playlist/{id}`.
+Playlist ids are the same as in the music-social.com URL: `https://music-social.com/playlist/{id}`.
 
 ```env
 MUSIC_SOCIAL_PLAYLIST_ID=pl_single
@@ -229,7 +229,7 @@ MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID=pl_no_sync,pl_also_skip
 
 #### Playlist artwork
 
-music-social’s playlist JSON does not expose a cover URL, so Plexify usually **does not** set a Plex playlist poster.
+The music-social.com playlist JSON does not expose a cover URL, so Plexify usually **does not** set a Plex playlist poster.
 
 ## Results
 
@@ -247,7 +247,7 @@ Songs in playlist (62 total):
   2. Mae Stephens - Tiny Voice (Tiny Voice)
   3. Georgia - Wanna Play (Wanna Play)
   ...
-Successfully fetched 62 songs from music-social playlist
+Successfully fetched 62 songs from source playlist
 
 ================================================================================
 MATCHING SONGS TO PLEX LIBRARY
@@ -291,7 +291,7 @@ Tracks not found in Plex library (5 total):
      ISRC: (not available)
 ```
 
-**Note:** The missing-tracks section lists ISRC when known and a MusicBrainz recording link when music-social supplied a MBID for that track.
+**Note:** The missing-tracks section lists ISRC when known and a MusicBrainz recording link when the source API supplied a MBID for that track.
 
 ## Matching Order and Rules
 
@@ -305,7 +305,7 @@ Tracks not found in Plex library (5 total):
 - Falls back to title-only search: `"Song Title"`
 - Falls back to artist-only search: `"Artist Name"`
 - Returns immediately if exact match is found (most reliable)
-- **Comma-separated artists (music-social):** When the source lists several names in one `artist` field (e.g. `Le Youth, Forester, Robertson`), Plexify tries the **first** name first for Plex lookups—aligned with typical single-artist Plex metadata—then runs the same pipeline again with the **full** string if nothing matched (fallback for legitimate commas in a band name).
+- **Comma-separated artists (source payload):** When the source lists several names in one `artist` field (e.g. `Le Youth, Forester, Robertson`), Plexify tries the **first** name first for Plex lookups—aligned with typical single-artist Plex metadata—then runs the same pipeline again with the **full** string if nothing matched (fallback for legitimate commas in a band name).
 
 ### 2. **Single Quote Handling** (Second Priority)
 
@@ -405,7 +405,7 @@ Tracks not found in Plex library (5 total):
 
 If you run into issues where plexify will not match a song that you know is in your Plex library, [please raise an issue in this repo](https://github.com/grrywlsn/plexify/issues), and include:
 
-- the artist name and track name from music-social
+- the artist name and track name as shown on music-social.com (or your configured source)
 - the artist name and track name from your Plex
 
 Please copy/paste them **exactly** as they appear in each source, so that the matching can be tested.

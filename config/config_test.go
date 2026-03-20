@@ -177,8 +177,8 @@ func TestInitializeDefaults(t *testing.T) {
 	cfg := &Config{}
 	cfg.initializeDefaults()
 
-	if cfg.MusicSocial.BaseURL != "" {
-		t.Errorf("Expected empty BaseURL, got '%s'", cfg.MusicSocial.BaseURL)
+	if cfg.MusicSocial.BaseURL != DefaultMusicSocialBaseURL {
+		t.Errorf("Expected BaseURL %q, got '%s'", DefaultMusicSocialBaseURL, cfg.MusicSocial.BaseURL)
 	}
 	if cfg.MusicSocial.Username != "" {
 		t.Errorf("Expected empty Username, got '%s'", cfg.MusicSocial.Username)

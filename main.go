@@ -22,7 +22,7 @@ func parseFlags() map[string]string {
 	overrides := make(map[string]string)
 
 	var musicSocialURL, musicSocialUsername, musicSocialPlaylistID, musicSocialPlaylistExcludedID string
-	flag.StringVar(&musicSocialURL, "MUSIC_SOCIAL_URL", "", "music-social instance base URL (overrides env var)")
+	flag.StringVar(&musicSocialURL, "MUSIC_SOCIAL_URL", "", "music-social.com API base URL (default https://music-social.com; overrides env)")
 	flag.StringVar(&musicSocialUsername, "MUSIC_SOCIAL_USERNAME", "", "Username whose public playlists to sync (overrides env var)")
 	flag.StringVar(&musicSocialPlaylistID, "MUSIC_SOCIAL_PLAYLIST_ID", "", "Comma-separated playlist IDs (overrides env var)")
 	flag.StringVar(&musicSocialPlaylistExcludedID, "MUSIC_SOCIAL_PLAYLIST_EXCLUDED_ID", "", "Comma-separated playlist IDs to exclude (overrides env var)")

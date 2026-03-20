@@ -16,7 +16,7 @@ type Config struct {
 	Plex        PlexConfig
 }
 
-// MusicSocialConfig holds music-social HTTP API configuration
+// MusicSocialConfig holds HTTP API configuration for music-social.com (or a compatible host via MUSIC_SOCIAL_URL).
 type MusicSocialConfig struct {
 	BaseURL             string
 	Username            string   // List public playlists for this user
@@ -44,7 +44,7 @@ type PlexConfig struct {
 }
 
 // Load loads configuration following the specified order:
-// 1. Start with empty values
+// 1. Start with defaults (including MUSIC_SOCIAL_URL → music-social.com)
 // 2. Load from OS environment variables (only if they exist)
 // 3. Load from .env file in the process working directory (optional convenience; not persisted app state)
 // 4. Apply CLI flag overrides (only if they exist)
@@ -86,7 +86,7 @@ func LoadWithOverrides(overrides map[string]string) (*Config, error) {
 
 func (c *Config) initializeDefaults() {
 	c.MusicSocial = MusicSocialConfig{
-		BaseURL:             "",
+		BaseURL:             DefaultMusicSocialBaseURL,
 		Username:            "",
 		PlaylistIDs:         nil,
 		ExcludedPlaylistIDs: nil,
@@ -109,6 +109,9 @@ func (c *Config) initializeDefaults() {
 
 // DefaultMatchConfidencePercent is the default minimum match score (whole percent) when PLEXIFY_MATCH_CONFIDENCE_PERCENT is unset.
 const DefaultMatchConfidencePercent = 80
+
+// DefaultMusicSocialBaseURL is the default MUSIC_SOCIAL_URL (https://music-social.com). Override for a self-hosted or other compatible API base.
+const DefaultMusicSocialBaseURL = "https://music-social.com"
 
 func (c *Config) loadFromOSEnv() {
 	if value := os.Getenv("MUSIC_SOCIAL_URL"); value != "" {

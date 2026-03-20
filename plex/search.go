@@ -41,7 +41,7 @@ type trackSearchStrategy struct {
 // title/artist search; only if still unmatched and SkipFullLibrarySearch is false, it scans /all.
 // With ExactMatchesOnly, only the first strategy (raw source title/artist) runs and full-library scan is skipped.
 //
-// When the source artist field lists multiple names separated by commas (typical for music-social),
+// When the source artist field lists multiple names separated by commas (typical on music-social.com),
 // the primary (first) name is used first for Plex queries, then the full string is retried if needed.
 func (c *Client) SearchTrack(ctx context.Context, song track.Track) (*PlexTrack, MatchKind, error) {
 	if err := ctx.Err(); err != nil {

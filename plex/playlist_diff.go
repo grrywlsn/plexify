@@ -35,7 +35,7 @@ func StdoutSupportsColor() bool {
 	return WriterSupportsColor(os.Stdout)
 }
 
-// PlaylistDesiredEntry is one matched row in music-social order for the target Plex playlist.
+// PlaylistDesiredEntry is one matched row in source playlist order for the target Plex playlist.
 type PlaylistDesiredEntry struct {
 	MatchResult MatchResult // PlexTrack non-nil
 }
@@ -229,7 +229,7 @@ func fprintPlaylistDiff(w io.Writer, view PlaylistDiffView, useColor, outerBanne
 			ent := view.Desired[op.NewIdx]
 			src := ent.MatchResult.SourceTrack
 			pt := ent.MatchResult.PlexTrack
-			printLine(ansiGreen+ansiBold, "+ music-social: "+formatArtistTitle(src.Artist, src.Name))
+			printLine(ansiGreen+ansiBold, fmt.Sprintf("+ %s: ", sourceServiceDisplayName)+formatArtistTitle(src.Artist, src.Name))
 			printLine(ansiGreen, "+ plex:         "+formatArtistTitle(pt.Artist, pt.Title)+fmt.Sprintf(" (confidence: %s)", formatConfidencePercent(ent.MatchResult.Confidence)))
 		case PlaylistDiffRemove:
 			pt := &view.Old[op.OldIdx]
