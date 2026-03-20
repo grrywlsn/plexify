@@ -40,12 +40,34 @@ type trackSearchStrategy struct {
 // It uses a tiered pipeline: all strategies run with combined-query search first, then again with
 // title/artist search; only if still unmatched and SkipFullLibrarySearch is false, it scans /all.
 // With ExactMatchesOnly, only the first strategy (raw source title/artist) runs and full-library scan is skipped.
+//
+// When the source artist field lists multiple names separated by commas (typical for music-social),
+// the primary (first) name is used first for Plex queries, then the full string is retried if needed.
 func (c *Client) SearchTrack(ctx context.Context, song track.Track) (*PlexTrack, MatchKind, error) {
-	c.debugLog("🔍 SearchTrack: searching for '%s' by '%s'", song.Name, song.Artist)
-
 	if err := ctx.Err(); err != nil {
 		return nil, MatchTypeError, fmt.Errorf("search cancelled: %w", err)
 	}
+
+	candidates := song.PlexSearchArtistCandidates()
+	for i, searchArtist := range candidates {
+		if i > 0 {
+			c.debugLog("🔍 SearchTrack: no match with primary artist; retrying with full artist field %q", searchArtist)
+		}
+		found, err := c.searchTrackWithArtist(ctx, song, searchArtist)
+		if err != nil {
+			return nil, MatchTypeError, err
+		}
+		if found != nil {
+			return found, MatchTypeTitleArtist, nil
+		}
+	}
+
+	return nil, MatchTypeNone, nil
+}
+
+// searchTrackWithArtist runs the search pipeline for a single artist string (title still from song).
+func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, artist string) (*PlexTrack, error) {
+	c.debugLog("🔍 SearchTrack: searching for '%s' by '%s' (source artist field: %q)", song.Name, artist, song.Artist)
 
 	indexedStrategies := c.indexedTrackSearchStrategies()
 	if c.exactMatchesOnly {
@@ -56,35 +78,35 @@ func (c *Client) SearchTrack(ctx context.Context, song track.Track) (*PlexTrack,
 	for _, phase := range []searchPhase{searchPhaseCombined, searchPhaseTitleArtist} {
 		for _, strategy := range indexedStrategies {
 			if err := ctx.Err(); err != nil {
-				return nil, MatchTypeError, fmt.Errorf("search cancelled: %w", err)
+				return nil, fmt.Errorf("search cancelled: %w", err)
 			}
-			track, err := strategy.fn(ctx, phase, song.Name, song.Artist)
+			tr, err := strategy.fn(ctx, phase, song.Name, artist)
 			if err != nil {
-				return nil, MatchTypeError, err
+				return nil, err
 			}
-			if track != nil {
-				slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", track.Title, track.Artist, strategy.name, phase.tierLabel()))
-				return track, MatchTypeTitleArtist, nil
+			if tr != nil {
+				slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", tr.Title, tr.Artist, strategy.name, phase.tierLabel()))
+				return tr, nil
 			}
 		}
 	}
 
 	if !c.skipFullLibrarySearch && !c.exactMatchesOnly {
 		if err := ctx.Err(); err != nil {
-			return nil, MatchTypeError, fmt.Errorf("search cancelled: %w", err)
+			return nil, fmt.Errorf("search cancelled: %w", err)
 		}
-		c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", song.Name, song.Artist)
-		track, err := c.searchEntireLibrary(ctx, song.Name, song.Artist)
+		c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", song.Name, artist)
+		tr, err := c.searchEntireLibrary(ctx, song.Name, artist)
 		if err != nil {
-			return nil, MatchTypeError, err
+			return nil, err
 		}
-		if track != nil {
-			slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", track.Title, track.Artist))
-			return track, MatchTypeTitleArtist, nil
+		if tr != nil {
+			slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.Artist))
+			return tr, nil
 		}
 	}
 
-	return nil, MatchTypeNone, nil
+	return nil, nil
 }
 
 func (c *Client) indexedTrackSearchStrategies() []trackSearchStrategy {

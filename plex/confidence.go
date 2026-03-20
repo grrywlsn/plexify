@@ -22,7 +22,13 @@ func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, mat
 	switch matchType {
 	case MatchTypeTitleArtist:
 		titleSimilarity := c.calculateStringSimilarity(strings.ToLower(song.Name), strings.ToLower(plexTrack.Title))
-		artistSimilarity := c.calculateStringSimilarity(strings.ToLower(song.Artist), strings.ToLower(plexTrack.Artist))
+		plexArtistLower := strings.ToLower(plexTrack.Artist)
+		artistSimilarity := c.calculateStringSimilarity(strings.ToLower(track.PrimaryListedArtist(song.Artist)), plexArtistLower)
+		if full := strings.ToLower(strings.TrimSpace(song.Artist)); full != "" {
+			if sim := c.calculateStringSimilarity(full, plexArtistLower); sim > artistSimilarity {
+				artistSimilarity = sim
+			}
+		}
 
 		titleVariantPairs := []struct{ a, b string }{
 			{strings.ToLower(c.removeBrackets(song.Name)), strings.ToLower(c.removeBrackets(plexTrack.Title))},
@@ -45,6 +51,13 @@ func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, mat
 		)
 		if featuringArtistSimilarity > artistSimilarity {
 			artistSimilarity = featuringArtistSimilarity
+		}
+		featuringPrimarySimilarity := c.calculateStringSimilarity(
+			strings.ToLower(c.removeFeaturing(track.PrimaryListedArtist(song.Artist))),
+			strings.ToLower(c.removeFeaturing(plexTrack.Artist)),
+		)
+		if featuringPrimarySimilarity > artistSimilarity {
+			artistSimilarity = featuringPrimarySimilarity
 		}
 
 		return (titleSimilarity * 0.7) + (artistSimilarity * 0.3)

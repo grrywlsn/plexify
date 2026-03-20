@@ -294,6 +294,7 @@ Tracks not found in Plex library (5 total):
 - Falls back to title-only search: `"Song Title"`
 - Falls back to artist-only search: `"Artist Name"`
 - Returns immediately if exact match is found (most reliable)
+- **Comma-separated artists (music-social):** When the source lists several names in one `artist` field (e.g. `Le Youth, Forester, Robertson`), Plexify tries the **first** name first for Plex lookups—aligned with typical single-artist Plex metadata—then runs the same pipeline again with the **full** string if nothing matched (fallback for legitimate commas in a band name).
 
 ### 2. **Single Quote Handling** (Second Priority)
 
