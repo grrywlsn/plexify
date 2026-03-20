@@ -14,7 +14,7 @@ import (
 
 const defaultHTTPTimeout = 60 * time.Second
 
-// Client fetches playlist data from a music-social instance over HTTPS.
+// Client fetches playlist data from a music-social.com-compatible HTTPS API (any base URL).
 type Client struct {
 	base *url.URL
 	http *http.Client

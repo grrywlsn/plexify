@@ -24,8 +24,8 @@ type PlaylistMeta struct {
 	ID          string
 	Name        string
 	Description string
-	ArtworkURL  string // Unused for music-social (no cover URL in API); kept for Plex poster hook
-	PageURL     string // Canonical music-social playlist URL for Plex description attribution
+	ArtworkURL  string // Unused for source API (no cover URL); kept for Plex poster hook
+	PageURL     string // Canonical source playlist URL (e.g. on music-social.com) for Plex description attribution
 }
 
 // Application holds clients and config for a single run (no persisted state between invocations).
@@ -39,7 +39,7 @@ type Application struct {
 func NewApplication(cfg *config.Config, debug bool) (*Application, error) {
 	ms, err := musicsocial.NewClient(cfg.MusicSocial.BaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create music-social client: %w", err)
+		return nil, fmt.Errorf("failed to create music-social.com API client: %w", err)
 	}
 
 	plexClient := plex.NewClient(cfg)
@@ -120,7 +120,7 @@ func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 				})
 			}
 		}
-		fmt.Printf("🎵 Found %d public music-social playlist(s) for user %s\n", len(publicPlaylists), app.config.MusicSocial.Username)
+		fmt.Printf("🎵 Found %d public playlist(s) on music-social.com for user %s\n", len(publicPlaylists), app.config.MusicSocial.Username)
 	}
 
 	if len(app.config.MusicSocial.PlaylistIDs) > 0 {
@@ -152,7 +152,7 @@ func (app *Application) getPlaylistMetadata() ([]PlaylistMeta, error) {
 
 	playlistMetas = app.filterExcludedPlaylists(playlistMetas)
 
-	fmt.Printf("🎵 Processing %d music-social playlist(s)...\n\n", len(playlistMetas))
+	fmt.Printf("🎵 Processing %d source playlist(s)...\n\n", len(playlistMetas))
 
 	return playlistMetas, nil
 }
@@ -236,7 +236,7 @@ func (app *Application) displaySongs(songs []track.Track) {
 	}
 
 	fmt.Println()
-	fmt.Printf("Successfully fetched %d songs from music-social playlist\n", len(songs))
+	fmt.Printf("Successfully fetched %d songs from source playlist\n", len(songs))
 }
 
 func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {

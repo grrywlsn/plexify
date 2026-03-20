@@ -14,6 +14,9 @@ import (
 	"strings"
 )
 
+// sourceServiceDisplayName labels music-social.com in Plex descriptions and CLI diff output.
+const sourceServiceDisplayName = "music-social.com"
+
 // escapeDescription decodes HTML entities in playlist descriptions
 func (c *Client) escapeDescription(description string) string {
 	// Decode HTML entities to get the actual characters
@@ -27,7 +30,7 @@ func (c *Client) addSyncAttribution(description, sourcePlaylistURL string) strin
 		return description
 	}
 
-	syncLine := fmt.Sprintf("synced from music-social: %s", sourcePlaylistURL)
+	syncLine := fmt.Sprintf("synced from %s: %s", sourceServiceDisplayName, sourcePlaylistURL)
 
 	// If there's existing description, add newlines before the attribution
 	if description != "" {

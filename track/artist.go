@@ -3,7 +3,7 @@ package track
 import "strings"
 
 // PrimaryListedArtist returns the first comma-separated segment when s lists multiple
-// artists (e.g. music-social "Le Youth, Forester, Robertson" → "Le Youth").
+// artists (e.g. music-social.com "Le Youth, Forester, Robertson" → "Le Youth").
 // If there is no comma, returns strings.TrimSpace(s). Empty input returns "".
 func PrimaryListedArtist(s string) string {
 	s = strings.TrimSpace(s)
