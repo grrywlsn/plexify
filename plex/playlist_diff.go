@@ -230,7 +230,7 @@ func fprintPlaylistDiff(w io.Writer, view PlaylistDiffView, useColor, outerBanne
 			src := ent.MatchResult.SourceTrack
 			pt := ent.MatchResult.PlexTrack
 			printLine(ansiGreen+ansiBold, "+ music-social: "+formatArtistTitle(src.Artist, src.Name))
-			printLine(ansiGreen, "+ plex:         "+formatArtistTitle(pt.Artist, pt.Title)+fmt.Sprintf(" (confidence: %.3f)", ent.MatchResult.Confidence))
+			printLine(ansiGreen, "+ plex:         "+formatArtistTitle(pt.Artist, pt.Title)+fmt.Sprintf(" (confidence: %s)", formatConfidencePercent(ent.MatchResult.Confidence)))
 		case PlaylistDiffRemove:
 			pt := &view.Old[op.OldIdx]
 			printLine(ansiRed+ansiBold, "- plex:         "+formatArtistTitle(pt.Artist, pt.Title))
@@ -241,7 +241,7 @@ func fprintPlaylistDiff(w io.Writer, view PlaylistDiffView, useColor, outerBanne
 			newPt := ent.MatchResult.PlexTrack
 			printLine(ansiYellow+ansiBold, "~ was (plex):    "+formatArtistTitle(oldTr.Artist, oldTr.Title))
 			printLine(ansiYellow, "~ now (source): "+formatArtistTitle(src.Artist, src.Name))
-			printLine(ansiYellow, "~ now (plex):   "+formatArtistTitle(newPt.Artist, newPt.Title)+fmt.Sprintf(" (confidence: %.3f)", ent.MatchResult.Confidence))
+			printLine(ansiYellow, "~ now (plex):   "+formatArtistTitle(newPt.Artist, newPt.Title)+fmt.Sprintf(" (confidence: %s)", formatConfidencePercent(ent.MatchResult.Confidence)))
 		}
 		fmt.Fprintln(w, "")
 	}

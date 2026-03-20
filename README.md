@@ -23,9 +23,9 @@ Run it as a CLI or on a schedule (e.g. cron). The catalog is read from your musi
 
 After matching tracks to your library, Plexify fetches the existing playlist’s items (if the playlist already exists), compares **ordered** `ratingKey` lists with an LCS-based diff, and prints a **PLAYLIST CHANGES** subsection inside **SUMMARY** (before **MISSING TRACKS SUMMARY** when there are gaps):
 
-- Green `+`: tracks to add (music-social source line + matched Plex line + confidence)
+- Green `+`: tracks to add (music-social source line + matched Plex line + confidence as a percentage, e.g. `80%`)
 - Red `-`: tracks to remove (Plex line only)
-- Yellow `~`: substitution when a delete+insert pair is coalesced (previous Plex track → new source + new Plex + confidence)
+- Yellow `~`: substitution when a delete+insert pair is coalesced (previous Plex track → new source + new Plex + confidence %)
 
 Colors apply when stdout is a terminal. Set [`NO_COLOR`](https://no-color.org/) to force plain text. New playlists show an add-only diff (every matched track as `+`) before the playlist is created.
 

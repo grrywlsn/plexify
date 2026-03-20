@@ -657,12 +657,12 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 
 	// Only return a match if the score is above a threshold
 	if bestScore >= MinConfidenceScore {
-		slog.Info(fmt.Sprintf("✅ FindBestMatch: FINAL RESULT - returning match '%s' by '%s' (score: %.3f >= %.3f) for search '%s' by '%s'",
-			bestMatch.Title, bestMatch.Artist, bestScore, MinConfidenceScore, title, artist))
+		slog.Info(fmt.Sprintf("✅ FindBestMatch: FINAL RESULT - returning match '%s' by '%s' (score: %s >= %s) for search '%s' by '%s'",
+			bestMatch.Title, bestMatch.Artist, formatConfidencePercent(bestScore), formatConfidencePercent(MinConfidenceScore), title, artist))
 		return bestMatch
 	}
 
-	c.debugLog("❌ FindBestMatch: FINAL RESULT - no match found (best score: %.3f < %.3f) for search '%s' by '%s'", bestScore, MinConfidenceScore, title, artist)
+	c.debugLog("❌ FindBestMatch: FINAL RESULT - no match found (best score: %s < %s) for search '%s' by '%s'", formatConfidencePercent(bestScore), formatConfidencePercent(MinConfidenceScore), title, artist)
 	return nil
 }
 
@@ -717,16 +717,16 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 		// Additional check: if title similarity is very high (>90%), require reasonable artist similarity
 		if titleSimilarity > 0.9 && artistSimilarity < 0.3 {
 			// Skip this match - title is very similar but artist is too different
-			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %.3f > 0.9, artist: %.3f < 0.3)",
-				track.Title, track.Artist, titleSimilarity, artistSimilarity))
+			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
+				track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 			continue
 		}
 
 		// Additional check: if title similarity is high (>70%), require minimum artist similarity
 		if titleSimilarity > 0.7 && artistSimilarity < 0.2 {
 			// Skip this match - title is similar but artist is too different
-			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %.3f > 0.7, artist: %.3f < 0.2)",
-				track.Title, track.Artist, titleSimilarity, artistSimilarity))
+			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
+				track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 			continue
 		}
 
@@ -737,8 +737,8 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 			trackCopy := track
 			bestMatch = &trackCopy
 			bestArtistSimilarity = artistSimilarity
-			slog.Info(fmt.Sprintf("📈 FindBestMatchWithNormalizedPunctuation: new best match '%s' by '%s' (score: %.3f, title: %.3f, artist: %.3f)",
-				track.Title, track.Artist, score, titleSimilarity, artistSimilarity))
+			slog.Info(fmt.Sprintf("📈 FindBestMatchWithNormalizedPunctuation: new best match '%s' by '%s' (score: %s, title: %s, artist: %s)",
+				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 		}
 
 		// Perfect match - return immediately
@@ -750,11 +750,11 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 
 	// Only return a match if the score is above a threshold
 	if bestScore >= MinConfidenceScore {
-		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: returning match '%s' by '%s' (score: %.3f >= %.3f)",
-			bestMatch.Title, bestMatch.Artist, bestScore, MinConfidenceScore))
+		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: returning match '%s' by '%s' (score: %s >= %s)",
+			bestMatch.Title, bestMatch.Artist, formatConfidencePercent(bestScore), formatConfidencePercent(MinConfidenceScore)))
 		return bestMatch
 	}
 
-	slog.Info(fmt.Sprintf("❌ FindBestMatchWithNormalizedPunctuation: no match found (best score: %.3f < %.3f)", bestScore, MinConfidenceScore))
+	slog.Info(fmt.Sprintf("❌ FindBestMatchWithNormalizedPunctuation: no match found (best score: %s < %s)", formatConfidencePercent(bestScore), formatConfidencePercent(MinConfidenceScore)))
 	return nil
 }

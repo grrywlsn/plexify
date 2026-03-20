@@ -113,4 +113,27 @@ func TestFprintPlaylistDiff_noColor(t *testing.T) {
 	if !strings.Contains(out, "was (plex)") {
 		t.Fatal("expected change section", out)
 	}
+	if !strings.Contains(out, "(confidence: 75%)") {
+		t.Fatalf("expected confidence as percent, got: %s", out)
+	}
+}
+
+func TestFormatConfidencePercent(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		x    float64
+		want string
+	}{
+		{0, "0%"},
+		{0.8, "80%"},
+		{1.0, "100%"},
+		{0.805, "81%"},
+		{-0.5, "0%"},
+		{1.5, "100%"},
+	}
+	for _, tc := range tests {
+		if got := formatConfidencePercent(tc.x); got != tc.want {
+			t.Errorf("formatConfidencePercent(%v) = %q, want %q", tc.x, got, tc.want)
+		}
+	}
 }

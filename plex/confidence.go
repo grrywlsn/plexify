@@ -1,10 +1,33 @@
 package plex
 
 import (
+	"fmt"
+	"math"
 	"strings"
 
 	"github.com/grrywlsn/plexify/track"
 )
+
+// formatConfidencePercent renders a 0–1 score as a whole percent for user-facing output (e.g. 0.8 → "80%", 1.0 → "100%").
+func formatConfidencePercent(x float64) string {
+	if math.IsNaN(x) || math.IsInf(x, 0) {
+		return "0%"
+	}
+	if x < 0 {
+		x = 0
+	}
+	if x > 1 {
+		x = 1
+	}
+	p := int(math.Round(x * 100))
+	if p < 0 {
+		p = 0
+	}
+	if p > 100 {
+		p = 100
+	}
+	return fmt.Sprintf("%d%%", p)
+}
 
 func intAbs(x int) int {
 	if x < 0 {
