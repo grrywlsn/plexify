@@ -41,7 +41,7 @@ Plexify is **authoritative** for each source playlist: it **creates** a Plex pla
 
 ## Prerequisites
 
-- A [music-social.com](https://music-social.com) account (or another host exposing the same JSON API), unless you rely on the default `https://music-social.com`
+- Playlists on [music-social.com](https://music-social.com) (Plexify’s default API base) or on another compatible host you configure with `MUSIC_SOCIAL_URL` — e.g. your music-social.com username for discovery, or public playlist id(s) you copy from the site
 - Plex Media Server with a music library and an `X-Plex-Token`
 
 ## Quick Start

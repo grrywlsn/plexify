@@ -236,7 +236,7 @@ func (app *Application) displaySongs(songs []track.Track) {
 	}
 
 	fmt.Println()
-		fmt.Printf("Successfully fetched %d songs from source playlist\n", len(songs))
+	fmt.Printf("Successfully fetched %d songs from source playlist\n", len(songs))
 }
 
 func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {
