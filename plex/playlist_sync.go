@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"github.com/grrywlsn/plexify/track"
@@ -124,8 +125,9 @@ func (c *Client) FindPlaylistByTitle(ctx context.Context, title string) (*PlexPl
 		slog.InfoContext(ctx, "failed to list playlists", "err", err)
 		return nil, err
 	}
+	want := strings.TrimSpace(title)
 	for i := range existingPlaylists {
-		if existingPlaylists[i].Title == title {
+		if strings.TrimSpace(existingPlaylists[i].Title) == want {
 			pl := existingPlaylists[i]
 			return &pl, nil
 		}

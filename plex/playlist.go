@@ -112,35 +112,65 @@ func (c *Client) CreatePlaylist(ctx context.Context, title, description, trackUR
 	return createdPlaylist, nil
 }
 
-// GetPlaylists retrieves all playlists from the Plex server
+// plexPlaylistsListContainer is the XML envelope for GET /playlists (paginated).
+type plexPlaylistsListContainer struct {
+	XMLName   xml.Name       `xml:"MediaContainer"`
+	Size      int            `xml:"size,attr"`
+	TotalSize int            `xml:"totalSize,attr"`
+	Playlists []PlexPlaylist `xml:"Playlist"`
+}
+
+// GetPlaylists retrieves all playlists from the Plex server (paginated; default Plex page size can omit older playlists).
 func (c *Client) GetPlaylists(ctx context.Context) ([]PlexPlaylist, error) {
-	reqURL := fmt.Sprintf("%s/playlists", c.baseURL)
-	params := url.Values{}
-	params.Add("X-Plex-Token", c.token)
+	const pageSize = 200
+	var all []PlexPlaylist
+	offset := 0
+	for {
+		reqURL := fmt.Sprintf("%s/playlists", c.baseURL)
+		params := url.Values{}
+		params.Add("X-Plex-Token", c.token)
+		params.Add("X-Plex-Container-Start", strconv.Itoa(offset))
+		params.Add("X-Plex-Container-Size", strconv.Itoa(pageSize))
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL+"?"+params.Encode(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create playlists request: %w", err)
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL+"?"+params.Encode(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create playlists request: %w", err)
+		}
+		req.Header.Set("Accept", "application/xml")
+		req.Header.Set("X-Plex-Token", c.token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make playlists request: %w", err)
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			return nil, fmt.Errorf("read playlists body: %w", readErr)
+		}
+		if resp.StatusCode != StatusOK {
+			return nil, fmt.Errorf("plex playlists API returned status %d: %s", resp.StatusCode, string(body))
+		}
+
+		var container plexPlaylistsListContainer
+		if err := xml.Unmarshal(body, &container); err != nil {
+			return nil, fmt.Errorf("failed to decode playlists response: %w", err)
+		}
+
+		all = append(all, container.Playlists...)
+		got := len(container.Playlists)
+		if got == 0 {
+			break
+		}
+		offset += got
+		if container.TotalSize > 0 && len(all) >= container.TotalSize {
+			break
+		}
+		if got < pageSize {
+			break
+		}
 	}
-
-	req.Header.Set("Accept", "application/xml")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make playlists request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != StatusOK {
-		return nil, fmt.Errorf("plex playlists API returned status %d", resp.StatusCode)
-	}
-
-	var playlistResp PlexResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&playlistResp); err != nil {
-		return nil, fmt.Errorf("failed to decode playlists response: %w", err)
-	}
-
-	return playlistResp.Playlists, nil
+	return all, nil
 }
 
 // UpdatePlaylistMetadata updates the metadata of an existing playlist
@@ -312,22 +342,22 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 		req.Header.Set("Accept", "application/xml")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		// Make request
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
 			slog.Info(fmt.Sprintf("Failed to make request for track %s: %v", trackID, err))
 			continue
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			c.debugLog("Plex API returned status %d for track %s: %s", resp.StatusCode, trackID, string(body))
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			slog.Info(fmt.Sprintf("Failed to read response for track %s: %v", trackID, readErr))
 			continue
 		}
 
-		// Read response to check if track was actually added
-		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != StatusOK {
+			c.debugLog("Plex API returned status %d for track %s: %s", resp.StatusCode, trackID, string(body))
+			continue
+		}
 		if len(body) > 0 {
 			// Check if the response indicates the track was added
 			if strings.Contains(string(body), "leafCountAdded") {

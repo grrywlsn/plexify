@@ -31,6 +31,14 @@ Colors apply when stdout is a terminal. Set [`NO_COLOR`](https://no-color.org/) 
 
 Because Plexify is stateless, it cannot highlight “same Plex track, different confidence vs last run”; yellow reflects a **different library track** at that edit (or a paired remove/add in order).
 
+### If the wrong Plex playlist updates (or yours never changes)
+
+Plexify is **authoritative** for each music-social playlist: it **creates** a Plex playlist if none matches the title, or **replaces** the contents of the matching one (clear + re-add). It does not require a manual Plex playlist id.
+
+- **Dry-run:** `PLEXIFY_DRY_RUN=true` (or `-dry-run`) only prints the diff; it does not clear or add tracks on Plex.
+- **Title match:** The Plex target is the playlist whose **title** equals the music-social playlist name (leading/trailing spaces ignored). If you have **two** Plex playlists with the same name, the first one returned by the server is updated—remove or rename the duplicate so only one matches.
+- **Playlist listing:** Plex’s `GET /playlists` response is paginated; Plexify loads all pages so an older playlist is not missed when resolving by title.
+
 ## Prerequisites
 
 - A reachable **music-social** deployment and its HTTPS base URL
