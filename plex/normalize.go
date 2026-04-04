@@ -85,8 +85,27 @@ func (c *Client) removeWith(s string) string {
 	return s
 }
 
+// removeColorsShowSuffix strips trailing "A COLORS SHOW" promo tags (MusicBrainz / streaming) so titles
+// match Plex entries that omit them, e.g. "Song – A COLORS SHOW" → "Song".
+func (c *Client) removeColorsShowSuffix(s string) string {
+	lowerS := strings.ToLower(s)
+	// Hyphen-minus, en dash, and em dash before "A COLORS SHOW" (typical MusicBrainz punctuation).
+	for _, suffix := range []string{
+		" - A COLORS SHOW",
+		" – A COLORS SHOW", // U+2013
+		" — A COLORS SHOW", // U+2014
+	} {
+		if strings.HasSuffix(lowerS, strings.ToLower(suffix)) {
+			out := strings.TrimSpace(s[:len(s)-len(suffix)])
+			return strings.TrimSpace(strings.TrimSuffix(out, "-"))
+		}
+	}
+	return s
+}
+
 // RemoveCommonSuffixes removes common suffixes like "bonus track", "remix", "extended", etc. from track titles.
 func (c *Client) RemoveCommonSuffixes(s string) string {
+	s = c.removeColorsShowSuffix(s)
 	// Handle common suffixes (case insensitive)
 	lowerS := strings.ToLower(s)
 
