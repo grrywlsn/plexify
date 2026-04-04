@@ -15,6 +15,10 @@ func TestPrimaryListedArtist(t *testing.T) {
 		{"TOMORA, AURORA, Tom Rowlands", "TOMORA"},
 		{"Solo Act", "Solo Act"},
 		{"  A , B , C  ", "A"},
+		{"SOPHIE & Bibi Bourelly", "SOPHIE"},
+		{"Simon & Garfunkel", "Simon"},
+		{"Headliner & Guest", "Headliner"},
+		{"SingleName", "SingleName"},
 	}
 	for _, tc := range tests {
 		if got := PrimaryListedArtist(tc.in); got != tc.want {
@@ -34,5 +38,9 @@ func TestTrack_PlexSearchArtistCandidates(t *testing.T) {
 	want := []string{"Le Youth", "Le Youth, Forester, Robertson"}
 	if got := (Track{Artist: "Le Youth, Forester, Robertson"}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, want) {
 		t.Errorf("multi: got %v want %v", got, want)
+	}
+	wantAmp := []string{"SOPHIE", "SOPHIE & Bibi Bourelly"}
+	if got := (Track{Artist: "SOPHIE & Bibi Bourelly"}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantAmp) {
+		t.Errorf("ampersand collab: got %v want %v", got, wantAmp)
 	}
 }
