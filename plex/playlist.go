@@ -494,7 +494,8 @@ func (c *Client) playlistPutLibraryMetadataBatch(ctx context.Context, playlistID
 
 // AddTracksToPlaylist adds tracks to an existing playlist in source order, including duplicate library tracks.
 // Comma-separated metadata URIs are limited per batch; repeat plays use single-key batches so Plex does not skip
-// keys already present from earlier batches in the same run. Chunks are linked with after=<tail playlistItemID>.
+// keys already present from earlier comma batches. Chunks use after=<tail playlistItemID>; if a repeat returns
+// leafCountAdded=0 with after=, the same request is retried without after= (end append), which many PMS builds accept.
 func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	if len(trackIDs) == 0 {
 		return nil
@@ -529,8 +530,20 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 		if err != nil {
 			return fmt.Errorf("add playlist batch at offset %d: %w", runLen, err)
 		}
+		// PMS often returns leafCountAdded=0 for a repeat when using after=<playlistItemID>; appending with
+		// no after= matches python-plexapi addItems (end append) and can succeed for the same library track.
+		if leaf < len(chunk) && len(chunk) == 1 && strings.TrimSpace(after) != "" {
+			leaf2, err2 := c.playlistPutLibraryMetadataBatch(ctx, playlistID, keyPart, "", len(chunk))
+			if err2 != nil {
+				return fmt.Errorf("add playlist batch at offset %d (retry without after=): %w", runLen, err2)
+			}
+			if leaf2 >= 1 {
+				slog.Info("plex playlist add: repeat succeeded without after= (PMS rejected after= for this rating key)", "ratingKey", chunk[0], "offset", runLen)
+				leaf = leaf2
+			}
+		}
 		if leaf < len(chunk) {
-			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); playlist may be partially updated — clear the playlist and retry; if the source repeats the same track, ensure repeats use single-key batches (plexify chunks repeats globally)", leaf, len(chunk))
+			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); playlist may be partially updated — clear the playlist and retry; Plex may not allow this track twice in one playlist via the API", leaf, len(chunk))
 		}
 		runLen += leaf
 		if ci < len(chunks)-1 {

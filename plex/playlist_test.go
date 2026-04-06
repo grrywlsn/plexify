@@ -137,6 +137,64 @@ func TestAddTracksToPlaylist_duplicateLibraryTrackSplitsBatchesUsesAfter(t *test
 	}
 }
 
+// Simulates PMS that returns leafCountAdded=0 for a repeat when after= is set, but succeeds on append (no after=).
+func TestAddTracksToPlaylist_repeatRetriesWithoutAfterWhenLeafZero(t *testing.T) {
+	var putCalls, getCalls int
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/playlists/") || !strings.HasSuffix(r.URL.Path, "/items") {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodPut:
+			putCalls++
+			after := r.URL.Query().Get("after")
+			switch putCalls {
+			case 1:
+				if after != "" {
+					t.Errorf("first PUT should not use after=")
+				}
+				_, _ = fmt.Fprintf(w, `<MediaContainer leafCountAdded="1"/>`)
+			case 2:
+				if after != "100" {
+					t.Errorf("second PUT want after=100, got %q", after)
+				}
+				_, _ = fmt.Fprintf(w, `<MediaContainer leafCountAdded="0"/>`)
+			case 3:
+				if after != "" {
+					t.Errorf("retry PUT should omit after=, got %q", after)
+				}
+				_, _ = fmt.Fprintf(w, `<MediaContainer leafCountAdded="1"/>`)
+			default:
+				t.Fatalf("unexpected PUT #%d", putCalls)
+			}
+		case http.MethodGet:
+			getCalls++
+			_, _ = fmt.Fprintf(w, `<MediaContainer size="1" totalSize="2"><Track ratingKey="11" playlistItemID="100" title="One"/></MediaContainer>`)
+		default:
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+		}
+	}))
+	defer srv.Close()
+
+	cl := &Client{
+		baseURL:    strings.TrimSuffix(srv.URL, "/"),
+		token:      "token",
+		serverID:   "machine-id",
+		httpClient: srv.Client(),
+	}
+	if err := cl.AddTracksToPlaylist(context.Background(), "42", []string{"11", "11"}); err != nil {
+		t.Fatal(err)
+	}
+	if putCalls != 3 {
+		t.Fatalf("expected 3 PUTs (with retry), got %d", putCalls)
+	}
+	if getCalls != 1 {
+		t.Fatalf("expected 1 GET, got %d", getCalls)
+	}
+}
+
 func TestAddTracksToPlaylist_multiBatchUsesAfterBetweenChunks(t *testing.T) {
 	var putCalls int
 	var afterSeen []string
