@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -33,7 +34,7 @@ func (p searchPhase) tierLabel() string {
 
 type trackSearchStrategy struct {
 	name string
-	fn   func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error)
+	fn   func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error)
 }
 
 // SearchTrack searches for a track in Plex using title/artist matching.
@@ -80,7 +81,7 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 			if err := ctx.Err(); err != nil {
 				return nil, fmt.Errorf("search cancelled: %w", err)
 			}
-			tr, err := strategy.fn(ctx, phase, song.Name, artist)
+			tr, err := strategy.fn(ctx, phase, song.Name, artist, song.Album)
 			if err != nil {
 				return nil, err
 			}
@@ -96,7 +97,7 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 			return nil, fmt.Errorf("search cancelled: %w", err)
 		}
 		c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", song.Name, artist)
-		tr, err := c.searchEntireLibrary(ctx, song.Name, artist)
+		tr, err := c.searchEntireLibrary(ctx, song.Name, artist, song.Album)
 		if err != nil {
 			return nil, err
 		}
@@ -111,77 +112,77 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 
 func (c *Client) indexedTrackSearchStrategies() []trackSearchStrategy {
 	return []trackSearchStrategy{
-		{"exact title/artist", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
-			return c.trySearchVariationsPhase(ctx, title, artist, phase)
+		{"exact title/artist", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
+			return c.trySearchVariationsPhase(ctx, title, artist, sourceAlbum, phase)
 		}},
-		{"single quote variations", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"single quote variations", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			if strings.Contains(title, "'") || strings.Contains(artist, "'") ||
 				strings.Contains(title, "'") || strings.Contains(artist, "'") {
-				return c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, phase)
+				return c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"brackets removed", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"brackets removed", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			cleanTitle := c.removeBrackets(title)
 			if cleanTitle != title {
-				return c.trySearchVariationsPhase(ctx, cleanTitle, artist, phase)
+				return c.trySearchVariationsPhase(ctx, cleanTitle, artist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"featuring removed", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"featuring removed", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			featuringTitle := c.removeFeaturing(title)
 			if featuringTitle != title && featuringTitle != c.removeBrackets(title) {
-				return c.trySearchVariationsPhase(ctx, featuringTitle, artist, phase)
+				return c.trySearchVariationsPhase(ctx, featuringTitle, artist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"featuring removed + normalized", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"featuring removed + normalized", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			featuringTitle := c.removeFeaturing(title)
 			if featuringTitle != title {
 				normalizedFeaturingTitle := c.normalizeTitle(featuringTitle)
 				if normalizedFeaturingTitle != featuringTitle {
 					c.debugLog("🔍 SearchTrack: trying featuring-removed + normalized '%s' for '%s' by '%s'", normalizedFeaturingTitle, title, artist)
-					return c.trySearchVariationsPhase(ctx, normalizedFeaturingTitle, artist, phase)
+					return c.trySearchVariationsPhase(ctx, normalizedFeaturingTitle, artist, sourceAlbum, phase)
 				}
 			}
 			return nil, nil
 		}},
-		{"artist featuring removed", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"artist featuring removed", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			featuringArtist := c.removeFeaturing(artist)
 			if featuringArtist != artist {
 				c.debugLog("🔍 SearchTrack: trying artist featuring-removed '%s' by '%s' for '%s' by '%s'", title, featuringArtist, title, artist)
-				return c.trySearchVariationsPhase(ctx, title, featuringArtist, phase)
+				return c.trySearchVariationsPhase(ctx, title, featuringArtist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"normalized title", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"normalized title", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			normalizedTitle := c.normalizeTitle(title)
 			if normalizedTitle != title && normalizedTitle != c.removeBrackets(title) && normalizedTitle != c.removeFeaturing(title) {
-				return c.trySearchVariationsPhase(ctx, normalizedTitle, artist, phase)
+				return c.trySearchVariationsPhase(ctx, normalizedTitle, artist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"with removed", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"with removed", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			withTitle := c.removeWith(title)
 			if withTitle != title && withTitle != c.removeBrackets(title) && withTitle != c.removeFeaturing(title) && withTitle != c.normalizeTitle(title) {
-				return c.trySearchVariationsPhase(ctx, withTitle, artist, phase)
+				return c.trySearchVariationsPhase(ctx, withTitle, artist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"suffixes removed", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"suffixes removed", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			suffixTitle := c.RemoveCommonSuffixes(title)
 			if suffixTitle != title && suffixTitle != c.removeBrackets(title) && suffixTitle != c.removeFeaturing(title) && suffixTitle != c.normalizeTitle(title) && suffixTitle != c.removeWith(title) {
 				c.debugLog("🔍 SearchTrack: trying suffix-removed title '%s' for '%s' by '%s'", suffixTitle, title, artist)
-				return c.trySearchVariationsPhase(ctx, suffixTitle, artist, phase)
+				return c.trySearchVariationsPhase(ctx, suffixTitle, artist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
-		{"accent normalization", func(ctx context.Context, phase searchPhase, title, artist string) (*PlexTrack, error) {
+		{"accent normalization", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			accentTitle := c.normalizeAccents(title)
 			accentArtist := c.normalizeAccents(artist)
 			if accentTitle != title || accentArtist != artist {
 				c.debugLog("🔍 SearchTrack: trying accent-normalized '%s' by '%s' for '%s' by '%s'", accentTitle, accentArtist, title, artist)
-				return c.trySearchVariationsPhase(ctx, accentTitle, accentArtist, phase)
+				return c.trySearchVariationsPhase(ctx, accentTitle, accentArtist, sourceAlbum, phase)
 			}
 			return nil, nil
 		}},
@@ -189,24 +190,24 @@ func (c *Client) indexedTrackSearchStrategies() []trackSearchStrategy {
 }
 
 // trySearchVariationsPhase runs one tier of indexed /search: combined query, or title then artist.
-func (c *Client) trySearchVariationsPhase(ctx context.Context, title, artist string, phase searchPhase) (*PlexTrack, error) {
+func (c *Client) trySearchVariationsPhase(ctx context.Context, title, artist, sourceAlbum string, phase searchPhase) (*PlexTrack, error) {
 	switch phase {
 	case searchPhaseCombined:
-		return c.searchByCombinedQuery(ctx, title, artist)
+		return c.searchByCombinedQuery(ctx, title, artist, sourceAlbum)
 	case searchPhaseTitleArtist:
-		if track, err := c.searchByTitle(ctx, title, artist); err != nil {
+		if track, err := c.searchByTitle(ctx, title, artist, sourceAlbum); err != nil {
 			return nil, err
 		} else if track != nil {
 			return track, nil
 		}
-		return c.searchByArtist(ctx, title, artist)
+		return c.searchByArtist(ctx, title, artist, sourceAlbum)
 	default:
 		return nil, nil
 	}
 }
 
 // searchByTitle searches for tracks by title in the music library
-func (c *Client) searchByTitle(ctx context.Context, title, artist string) (*PlexTrack, error) {
+func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum string) (*PlexTrack, error) {
 
 	// Use the library search endpoint
 	reqURL := fmt.Sprintf("%s/library/sections/%d/search", c.baseURL, c.sectionID)
@@ -244,7 +245,7 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist string) (*Plex
 			c.debugLog("  Result %d: '%s' by '%s' (ID: %s)", i+1, track.Title, track.Artist, track.ID)
 		}
 	}
-	result := c.FindBestMatch(searchResp.Tracks, title, artist)
+	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
 		slog.Info(fmt.Sprintf("✅ searchByTitle: found match '%s' by '%s'", result.Title, result.Artist))
 	} else {
@@ -254,7 +255,7 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist string) (*Plex
 }
 
 // searchByArtist searches for tracks by artist in the music library
-func (c *Client) searchByArtist(ctx context.Context, title, artist string) (*PlexTrack, error) {
+func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum string) (*PlexTrack, error) {
 
 	// Use the library search endpoint with artist query
 	reqURL := fmt.Sprintf("%s/library/sections/%d/search", c.baseURL, c.sectionID)
@@ -286,7 +287,7 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist string) (*Ple
 	}
 
 	// Find best match among search results
-	result := c.FindBestMatch(searchResp.Tracks, title, artist)
+	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
 		slog.Info(fmt.Sprintf("✅ searchByArtist: found match '%s' by '%s'", result.Title, result.Artist))
 	}
@@ -294,7 +295,7 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist string) (*Ple
 }
 
 // searchByCombinedQuery searches using a combined title + artist query (most efficient)
-func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist string) (*PlexTrack, error) {
+func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourceAlbum string) (*PlexTrack, error) {
 	// Try the most likely combination first
 	query := fmt.Sprintf("%s %s", title, artist)
 
@@ -320,7 +321,7 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist string
 	if resp.StatusCode == StatusOK {
 		var searchResp PlexResponse
 		if err := xml.NewDecoder(resp.Body).Decode(&searchResp); err == nil {
-			if track := c.FindBestMatch(searchResp.Tracks, title, artist); track != nil {
+			if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
 				slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.Artist))
 				return track, nil
 			}
@@ -331,12 +332,12 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist string
 }
 
 // searchByTitleWithSingleQuoteVariationsPhase runs one indexed tier for apostrophe title variations.
-func (c *Client) searchByTitleWithSingleQuoteVariationsPhase(ctx context.Context, title, artist string, phase searchPhase) (*PlexTrack, error) {
+func (c *Client) searchByTitleWithSingleQuoteVariationsPhase(ctx context.Context, title, artist, sourceAlbum string, phase searchPhase) (*PlexTrack, error) {
 	hasStandardApostrophe := strings.Contains(title, "'")
 	hasCurlyApostrophe := strings.Contains(title, "'")
 
 	if !hasStandardApostrophe && !hasCurlyApostrophe {
-		return c.trySearchVariationsPhase(ctx, title, artist, phase)
+		return c.trySearchVariationsPhase(ctx, title, artist, sourceAlbum, phase)
 	}
 
 	seen := make(map[string]bool)
@@ -356,7 +357,7 @@ func (c *Client) searchByTitleWithSingleQuoteVariationsPhase(ctx context.Context
 	addVariation(noApostrophe)
 
 	for _, variation := range variations {
-		track, err := c.trySearchVariationsPhase(ctx, variation, artist, phase)
+		track, err := c.trySearchVariationsPhase(ctx, variation, artist, sourceAlbum, phase)
 		if err != nil {
 			return nil, err
 		}
@@ -370,16 +371,16 @@ func (c *Client) searchByTitleWithSingleQuoteVariationsPhase(ctx context.Context
 
 // searchByTitleWithSingleQuoteVariations searches for tracks with single quotes by trying different variations.
 // Note: Plex's search API often doesn't handle special apostrophe characters well; full-library scan may still be needed unless fast search is on.
-func (c *Client) searchByTitleWithSingleQuoteVariations(ctx context.Context, title, artist string) (*PlexTrack, error) {
-	if track, err := c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, searchPhaseCombined); err != nil || track != nil {
+func (c *Client) searchByTitleWithSingleQuoteVariations(ctx context.Context, title, artist, sourceAlbum string) (*PlexTrack, error) {
+	if track, err := c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, sourceAlbum, searchPhaseCombined); err != nil || track != nil {
 		return track, err
 	}
-	return c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, searchPhaseTitleArtist)
+	return c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, sourceAlbum, searchPhaseTitleArtist)
 }
 
 // searchEntireLibrary is a fallback method that searches through all tracks in the library
 // This is used when the regular search methods fail to find tracks that should exist
-func (c *Client) searchEntireLibrary(ctx context.Context, title, artist string) (*PlexTrack, error) {
+func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceAlbum string) (*PlexTrack, error) {
 	// Get all tracks from the library
 	reqURL := fmt.Sprintf("%s/library/sections/%d/all", c.baseURL, c.sectionID)
 	params := url.Values{}
@@ -410,7 +411,7 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist string) 
 
 	// Find best match among all tracks
 	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(libraryResp.Tracks))
-	result := c.FindBestMatch(libraryResp.Tracks, title, artist)
+	result := c.FindBestMatch(libraryResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
 		slog.Info(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.Artist, title, artist))
 	} else {
@@ -419,32 +420,92 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist string) 
 	return result, nil
 }
 
-// FindBestMatch finds the best matching track from search results
-func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTrack {
+const scoreEqEps = 1e-9
+
+// bestAlbumSimilarity returns 0 if sourceAlbum is empty; otherwise the best string similarity
+// between source and Plex album fields using a few normalizations (title-style).
+func (c *Client) bestAlbumSimilarity(sourceAlbum, plexAlbum string) float64 {
+	if strings.TrimSpace(sourceAlbum) == "" {
+		return 0
+	}
+	s := strings.ToLower(strings.TrimSpace(sourceAlbum))
+	p := strings.ToLower(strings.TrimSpace(plexAlbum))
+	if p == "" {
+		return 0
+	}
+	best := c.calculateStringSimilarity(s, p)
+	if v := c.calculateStringSimilarity(
+		strings.ToLower(strings.TrimSpace(c.normalizeTitle(sourceAlbum))),
+		strings.ToLower(strings.TrimSpace(c.normalizeTitle(plexAlbum))),
+	); v > best {
+		best = v
+	}
+	if v := c.calculateStringSimilarity(
+		strings.ToLower(strings.TrimSpace(c.removeBrackets(sourceAlbum))),
+		strings.ToLower(strings.TrimSpace(c.removeBrackets(plexAlbum))),
+	); v > best {
+		best = v
+	}
+	if v := c.calculateStringSimilarity(
+		strings.ToLower(strings.TrimSpace(c.normalizeAccents(sourceAlbum))),
+		strings.ToLower(strings.TrimSpace(c.normalizeAccents(plexAlbum))),
+	); v > best {
+		best = v
+	}
+	return best
+}
+
+// FindBestMatch finds the best matching track from search results. When sourceAlbum is non-empty,
+// album similarity is blended into the score so duplicate title/artist releases can be disambiguated.
+func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum string) *PlexTrack {
 	if len(tracks) == 0 {
 		return nil
 	}
 
 	titleLower := strings.ToLower(strings.TrimSpace(title))
 	artistLower := strings.ToLower(strings.TrimSpace(artist))
+	sourceAlbumTrim := strings.TrimSpace(sourceAlbum)
+	useAlbumInScore := sourceAlbumTrim != ""
 
 	c.debugLog("🔍 FindBestMatch: searching for '%s' by '%s' among %d tracks", title, artist, len(tracks))
 
-	// First, check for exact matches before applying any transformations
-	for _, track := range tracks {
-		trackTitle := strings.ToLower(strings.TrimSpace(track.Title))
-		trackArtist := strings.ToLower(strings.TrimSpace(track.Artist))
-
-		// Check for exact title and artist match
+	var exactMatches []PlexTrack
+	for _, tr := range tracks {
+		trackTitle := strings.ToLower(strings.TrimSpace(tr.Title))
+		trackArtist := strings.ToLower(strings.TrimSpace(tr.Artist))
 		if titleLower == trackTitle && artistLower == trackArtist {
-			c.debugLog("✅ FindBestMatch: exact match found '%s' by '%s'", track.Title, track.Artist)
-			return &track
+			exactMatches = append(exactMatches, tr)
 		}
+	}
+	switch len(exactMatches) {
+	case 1:
+		t := exactMatches[0]
+		c.debugLog("✅ FindBestMatch: single exact match '%s' by '%s'", t.Title, t.Artist)
+		return &t
+	case 0:
+		// fall through to similarity scoring
+	default:
+		if useAlbumInScore {
+			var best PlexTrack
+			var bestAl float64 = -1
+			for _, tr := range exactMatches {
+				al := c.bestAlbumSimilarity(sourceAlbum, tr.Album)
+				if bestAl < 0 || al > bestAl+scoreEqEps {
+					bestAl = al
+					best = tr
+				}
+			}
+			t := best
+			c.debugLog("✅ FindBestMatch: multiple exact title/artist; picked by album (album similarity %s)", formatConfidencePercent(bestAl))
+			return &t
+		}
+		// Multiple exact matches and no source album: use full scoring below.
 	}
 
 	var bestMatch *PlexTrack
 	var bestScore float64
 	var bestArtistSimilarity float64
+	var bestAlbumSimilarity float64 = -1
 
 	for _, track := range tracks {
 		trackTitle := strings.ToLower(strings.TrimSpace(track.Title))
@@ -586,12 +647,26 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 			titleSimilarity = accentTitleSimilarity
 		}
 
-		// Combined score (title is more important than artist)
-		score := (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
+		albumSimilarity := 0.0
+		if useAlbumInScore {
+			albumSimilarity = c.bestAlbumSimilarity(sourceAlbum, track.Album)
+		}
+
+		var score float64
+		if useAlbumInScore {
+			score = (titleSimilarity * 0.55) + (artistSimilarity * 0.25) + (albumSimilarity * 0.20)
+		} else {
+			score = (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
+		}
 
 		c.debugLog("   Final title similarity: %s", formatConfidencePercent(titleSimilarity))
 		c.debugLog("   Final artist similarity: %s", formatConfidencePercent(artistSimilarity))
-		c.debugLog("   Combined score: %s (%s * 0.7 + %s * 0.3)", formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+		if useAlbumInScore {
+			c.debugLog("   Album similarity: %s", formatConfidencePercent(albumSimilarity))
+			c.debugLog("   Combined score: %s (0.55·title + 0.25·artist + 0.20·album)", formatConfidencePercent(score))
+		} else {
+			c.debugLog("   Combined score: %s (%s * 0.7 + %s * 0.3)", formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+		}
 
 		// Additional check: if title similarity is very high (>90%), require reasonable artist similarity
 		// Special case: be more lenient with "Various Artists" for compilation albums
@@ -625,33 +700,48 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 			}
 		}
 
-		// Update best match if this score is higher, or if scores are equal, prefer better artist match
-		if score > bestScore {
+		pick := false
+		if bestMatch == nil {
+			pick = true
+		} else if score > bestScore+scoreEqEps {
+			pick = true
+		} else if math.Abs(score-bestScore) <= scoreEqEps {
+			if useAlbumInScore {
+				if albumSimilarity > bestAlbumSimilarity+scoreEqEps {
+					pick = true
+				} else if math.Abs(albumSimilarity-bestAlbumSimilarity) <= scoreEqEps &&
+					artistSimilarity > bestArtistSimilarity+scoreEqEps {
+					pick = true
+				}
+			} else if artistSimilarity > bestArtistSimilarity+scoreEqEps {
+				pick = true
+			}
+		}
+
+		if pick {
+			prevBest := bestMatch
 			oldScore := bestScore
 			bestScore = score
-			// Create a copy of the track to avoid pointer aliasing
 			trackCopy := track
 			bestMatch = &trackCopy
 			bestArtistSimilarity = artistSimilarity
-			c.debugLog("📈 FindBestMatch: new best match '%s' by '%s' (score: %s > %s, title: %s, artist: %s)",
-				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(oldScore), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
-		} else if score == bestScore && artistSimilarity > bestArtistSimilarity {
-			bestScore = score
-			// Create a copy of the track to avoid pointer aliasing
-			trackCopy := track
-			bestMatch = &trackCopy
-			bestArtistSimilarity = artistSimilarity
-			c.debugLog("🎯 FindBestMatch: tie-breaker! '%s' by '%s' wins (same score: %s, better artist: %s > %s)",
-				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(artistSimilarity), formatConfidencePercent(bestArtistSimilarity))
+			bestAlbumSimilarity = albumSimilarity
+			if prevBest == nil || score > oldScore+scoreEqEps {
+				c.debugLog("📈 FindBestMatch: new best match '%s' by '%s' (score: %s > %s, title: %s, artist: %s)",
+					track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(oldScore), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+			} else {
+				c.debugLog("🎯 FindBestMatch: tie-breaker '%s' by '%s' (score: %s)", track.Title, track.Artist, formatConfidencePercent(score))
+			}
 		} else {
 			c.debugLog("⏭️  FindBestMatch: skipping '%s' by '%s' (score: %s, current best: %s)",
 				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(bestScore))
 		}
 
-		// Perfect match - return immediately
-		if titleSimilarity == 1.0 && artistSimilarity == 1.0 {
+		// Perfect title+artist: return immediately only when album is not used for disambiguation.
+		if !useAlbumInScore && titleSimilarity == 1.0 && artistSimilarity == 1.0 {
 			c.debugLog("🎯 FindBestMatch: perfect match found '%s' by '%s'", track.Title, track.Artist)
-			return &track
+			trackCopy := track
+			return &trackCopy
 		}
 	}
 
@@ -667,39 +757,60 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist string) *PlexTr
 	return nil
 }
 
-// FindBestMatchWithNormalizedPunctuation finds the best matching track using normalized punctuation
-func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, title, artist string) *PlexTrack {
+// FindBestMatchWithNormalizedPunctuation finds the best matching track using normalized punctuation.
+// When sourceAlbum is non-empty, album similarity is blended into the score (same weights as FindBestMatch).
+func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, title, artist, sourceAlbum string) *PlexTrack {
 	if len(tracks) == 0 {
 		return nil
 	}
 
-	// Normalize punctuation for both search terms and track data
 	normalizedTitle := c.normalizePunctuation(title)
 	normalizedArtist := c.normalizePunctuation(artist)
 
 	titleLower := strings.ToLower(strings.TrimSpace(normalizedTitle))
 	artistLower := strings.ToLower(strings.TrimSpace(normalizedArtist))
+	sourceAlbumTrim := strings.TrimSpace(sourceAlbum)
+	useAlbumInScore := sourceAlbumTrim != ""
 
 	slog.Info(fmt.Sprintf("🔍 FindBestMatchWithNormalizedPunctuation: searching for '%s' by '%s' among %d tracks", normalizedTitle, normalizedArtist, len(tracks)))
 
-	// First, check for exact matches with normalized punctuation
-	for _, track := range tracks {
-		normalizedTrackTitle := c.normalizePunctuation(track.Title)
-		normalizedTrackArtist := c.normalizePunctuation(track.Artist)
-
+	var exactMatches []PlexTrack
+	for _, tr := range tracks {
+		normalizedTrackTitle := c.normalizePunctuation(tr.Title)
+		normalizedTrackArtist := c.normalizePunctuation(tr.Artist)
 		trackTitle := strings.ToLower(strings.TrimSpace(normalizedTrackTitle))
 		trackArtist := strings.ToLower(strings.TrimSpace(normalizedTrackArtist))
-
-		// Check for exact title and artist match
 		if titleLower == trackTitle && artistLower == trackArtist {
-			slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: exact match found '%s' by '%s'", track.Title, track.Artist))
-			return &track
+			exactMatches = append(exactMatches, tr)
+		}
+	}
+	switch len(exactMatches) {
+	case 1:
+		t := exactMatches[0]
+		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: single exact match '%s' by '%s'", t.Title, t.Artist))
+		return &t
+	case 0:
+	default:
+		if useAlbumInScore {
+			var best PlexTrack
+			var bestAl float64 = -1
+			for _, tr := range exactMatches {
+				al := c.bestAlbumSimilarity(sourceAlbum, tr.Album)
+				if bestAl < 0 || al > bestAl+scoreEqEps {
+					bestAl = al
+					best = tr
+				}
+			}
+			t := best
+			slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: multiple exact; picked by album (similarity %s)", formatConfidencePercent(bestAl)))
+			return &t
 		}
 	}
 
 	var bestMatch *PlexTrack
 	var bestScore float64
 	var bestArtistSimilarity float64
+	var bestAlbumSimilarity float64 = -1
 
 	for _, track := range tracks {
 		normalizedTrackTitle := c.normalizePunctuation(track.Title)
@@ -708,48 +819,68 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 		trackTitle := strings.ToLower(strings.TrimSpace(normalizedTrackTitle))
 		trackArtist := strings.ToLower(strings.TrimSpace(normalizedTrackArtist))
 
-		// Calculate similarity scores with normalized punctuation
 		titleSimilarity := c.calculateStringSimilarity(titleLower, trackTitle)
 		artistSimilarity := c.calculateStringSimilarity(artistLower, trackArtist)
 
-		// Combined score (title is more important than artist)
-		score := (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
+		albumSimilarity := 0.0
+		if useAlbumInScore {
+			albumSimilarity = c.bestAlbumSimilarity(sourceAlbum, track.Album)
+		}
 
-		// Additional check: if title similarity is very high (>90%), require reasonable artist similarity
+		var score float64
+		if useAlbumInScore {
+			score = (titleSimilarity * 0.55) + (artistSimilarity * 0.25) + (albumSimilarity * 0.20)
+		} else {
+			score = (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
+		}
+
 		if titleSimilarity > 0.9 && artistSimilarity < 0.3 {
-			// Skip this match - title is very similar but artist is too different
 			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
 				track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 			continue
 		}
 
-		// Additional check: if title similarity is high (>70%), require minimum artist similarity
 		if titleSimilarity > 0.7 && artistSimilarity < 0.2 {
-			// Skip this match - title is similar but artist is too different
 			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
 				track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 			continue
 		}
 
-		// Update best match if this score is higher, or if scores are equal, prefer better artist match
-		if score > bestScore || (score == bestScore && artistSimilarity > bestArtistSimilarity) {
+		pick := false
+		if bestMatch == nil {
+			pick = true
+		} else if score > bestScore+scoreEqEps {
+			pick = true
+		} else if math.Abs(score-bestScore) <= scoreEqEps {
+			if useAlbumInScore {
+				if albumSimilarity > bestAlbumSimilarity+scoreEqEps {
+					pick = true
+				} else if math.Abs(albumSimilarity-bestAlbumSimilarity) <= scoreEqEps &&
+					artistSimilarity > bestArtistSimilarity+scoreEqEps {
+					pick = true
+				}
+			} else if artistSimilarity > bestArtistSimilarity+scoreEqEps {
+				pick = true
+			}
+		}
+
+		if pick {
 			bestScore = score
-			// Create a copy of the track to avoid pointer aliasing
 			trackCopy := track
 			bestMatch = &trackCopy
 			bestArtistSimilarity = artistSimilarity
+			bestAlbumSimilarity = albumSimilarity
 			slog.Info(fmt.Sprintf("📈 FindBestMatchWithNormalizedPunctuation: new best match '%s' by '%s' (score: %s, title: %s, artist: %s)",
 				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 		}
 
-		// Perfect match - return immediately
-		if titleSimilarity == 1.0 && artistSimilarity == 1.0 {
+		if !useAlbumInScore && titleSimilarity == 1.0 && artistSimilarity == 1.0 {
 			slog.Info(fmt.Sprintf("🎯 FindBestMatchWithNormalizedPunctuation: perfect match found '%s' by '%s'", track.Title, track.Artist))
-			return &track
+			trackCopy := track
+			return &trackCopy
 		}
 	}
 
-	// Only return a match if the score is above a threshold
 	minScore := c.minMatchScore()
 	if bestScore >= minScore {
 		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: returning match '%s' by '%s' (score: %s >= %s)",

@@ -83,6 +83,11 @@ func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, mat
 			artistSimilarity = featuringPrimarySimilarity
 		}
 
+		// Blend album only when both sides have album metadata (avoid punishing missing Plex parentTitle).
+		if strings.TrimSpace(song.Album) != "" && strings.TrimSpace(plexTrack.Album) != "" {
+			albumSim := c.bestAlbumSimilarity(song.Album, plexTrack.Album)
+			return (titleSimilarity * 0.55) + (artistSimilarity * 0.25) + (albumSim * 0.20)
+		}
 		return (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
 	default:
 		return 0.0

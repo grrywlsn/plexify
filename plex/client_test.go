@@ -706,7 +706,7 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 
 	// Test 1: FindBestMatch should find exact match first
 	t.Run("ExactMatchPriority", func(t *testing.T) {
-		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Error("Expected to find a match, got nil")
@@ -731,7 +731,7 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 		}
 
 		// Now search for the cleaned title
-		result := client.FindBestMatch(plexTracks, cleanedTitle, srcTrack.Artist)
+		result := client.FindBestMatch(plexTracks, cleanedTitle, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Error("Expected to find a match after removing 'with', got nil")
@@ -808,7 +808,7 @@ func TestNeonMoonMatchingScenario(t *testing.T) {
 		}
 
 		// Test that FindBestMatch correctly identifies this as a good match
-		result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist, "")
 
 		// Add debug output to understand what's happening
 		t.Logf("Searching for: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
@@ -863,7 +863,7 @@ func TestIncorrectMatchingIssue(t *testing.T) {
 
 	// Test 1: Verify that this should NOT match
 	t.Run("ShouldNotMatch", func(t *testing.T) {
-		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 		// This should NOT match - the songs are completely different
 		if result != nil {
@@ -975,7 +975,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 	t.Run("EmptySearchResults", func(t *testing.T) {
 		// Test what happens when search returns no results
 		emptyResults := []PlexTrack{}
-		result := client.FindBestMatch(emptyResults, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(emptyResults, srcTrack.Name, srcTrack.Artist, "")
 
 		if result != nil {
 			t.Errorf("Expected nil result for empty search results, got: %+v", result)
@@ -990,7 +990,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(singleResult, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(singleResult, srcTrack.Name, srcTrack.Artist, "")
 
 		// This should NOT match due to low confidence
 		if result != nil {
@@ -1020,7 +1020,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(multipleResults, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(multipleResults, srcTrack.Name, srcTrack.Artist, "")
 
 		// Add debug output to understand what's happening
 		t.Logf("Searching for: '%s' by '%s'", srcTrack.Name, srcTrack.Artist)
@@ -1055,7 +1055,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(lowConfidenceResults, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(lowConfidenceResults, srcTrack.Name, srcTrack.Artist, "")
 
 		// Both should be below threshold, so no match should be returned
 		if result != nil {
@@ -1418,7 +1418,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 			t.Logf("  %d. '%s' by '%s' (confidence: %f)", i+1, track.Title, track.Artist, confidence)
 		}
 
-		result := client.FindBestMatch(searchResults, searchTitle, searchArtist)
+		result := client.FindBestMatch(searchResults, searchTitle, searchArtist, "")
 
 		if result != nil {
 			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
@@ -1551,7 +1551,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 			t.Logf("  %d. '%s' by '%s' (confidence: %f)", i+1, track.Title, track.Artist, confidence)
 		}
 
-		result := client.FindBestMatch(entireLibrary, searchTitle, searchArtist)
+		result := client.FindBestMatch(entireLibrary, searchTitle, searchArtist, "")
 
 		if result != nil {
 			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
@@ -1632,7 +1632,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 					},
 				}
 
-				result := client.FindBestMatch(searchResults, "the lakes", "Taylor Swift")
+				result := client.FindBestMatch(searchResults, "the lakes", "Taylor Swift", "")
 				t.Logf("'%s' by '%s' -> FindBestMatch result: %v", tc.title, tc.artist, result)
 
 				if result != nil {
@@ -1762,7 +1762,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 		}
 
 		// After suffix removal, we're searching for "the lakes" by "Taylor Swift"
-		result := client.FindBestMatch(searchResults, "the lakes", "Taylor Swift")
+		result := client.FindBestMatch(searchResults, "the lakes", "Taylor Swift", "")
 
 		if result != nil {
 			confidence := client.calculateConfidence(srcTrack, result, MatchTypeTitleArtist)
@@ -1780,7 +1780,7 @@ func TestSearchFlowSimulation(t *testing.T) {
 			},
 		}
 
-		result2 := client.FindBestMatch(searchResults2, "the lakes", "Taylor Swift")
+		result2 := client.FindBestMatch(searchResults2, "the lakes", "Taylor Swift", "")
 
 		if result2 != nil {
 			confidence := client.calculateConfidence(srcTrack, result2, MatchTypeTitleArtist)
@@ -1789,6 +1789,47 @@ func TestSearchFlowSimulation(t *testing.T) {
 			t.Errorf("❌ BUG: 'The Lakes' by 'Taylor Swift' should match 'the lakes' by 'Taylor Swift'")
 		}
 	})
+}
+
+func TestFindBestMatch_duplicateReleaseDisambiguatedByAlbum(t *testing.T) {
+	client := &Client{}
+
+	sourceAlbum := "Sexistential"
+	title := "Blow my mind"
+	artist := "Example Artist"
+
+	// Wrong (older) release first: must not win when source album matches the newer release.
+	plexWrongFirst := []PlexTrack{
+		{ID: "plex_old_album", Title: title, Artist: artist, Album: "Don't stop the music"},
+		{ID: "plex_sexistential", Title: title, Artist: artist, Album: "Sexistential"},
+	}
+	got := client.FindBestMatch(plexWrongFirst, title, artist, sourceAlbum)
+	if got == nil || got.ID != "plex_sexistential" {
+		t.Fatalf("expected Sexistential release (id plex_sexistential), got %+v", got)
+	}
+	if got.Album != "Sexistential" {
+		t.Fatalf("expected album Sexistential, got %q", got.Album)
+	}
+
+	// Close variant on Plex (deluxe) should still beat an unrelated album.
+	plexDeluxe := []PlexTrack{
+		{ID: "plex_old_album_2", Title: title, Artist: artist, Album: "Don't stop the music"},
+		{ID: "plex_deluxe", Title: title, Artist: artist, Album: "Sexistential (Deluxe Edition)"},
+	}
+	got2 := client.FindBestMatch(plexDeluxe, title, artist, sourceAlbum)
+	if got2 == nil || got2.ID != "plex_deluxe" {
+		t.Fatalf("expected deluxe Sexistential row, got %+v", got2)
+	}
+
+	// No source album: two exact title/artist matches tie on score; first row in the slice wins.
+	plexDup := []PlexTrack{
+		{ID: "first_in_list", Title: title, Artist: artist, Album: "Don't stop the music"},
+		{ID: "second_in_list", Title: title, Artist: artist, Album: "Sexistential"},
+	}
+	got3 := client.FindBestMatch(plexDup, title, artist, "")
+	if got3 == nil || got3.ID != "first_in_list" {
+		t.Fatalf("with empty source album, first tied candidate should win; got %+v", got3)
+	}
 }
 
 func TestTheLakesConfidenceCalculation(t *testing.T) {
@@ -1856,7 +1897,7 @@ func TestFindBestMatchTheLakes(t *testing.T) {
 	}
 
 	// Test FindBestMatch directly
-	result := client.FindBestMatch(tracks, title, artist)
+	result := client.FindBestMatch(tracks, title, artist, "")
 
 	if result != nil {
 		t.Errorf("❌ FindBestMatch incorrectly returned a match: '%s' by '%s'", result.Title, result.Artist)
@@ -1894,7 +1935,7 @@ func TestFullLibrarySearchSimulation(t *testing.T) {
 	}
 
 	// Test FindBestMatch with the large track list
-	result := client.FindBestMatch(tracks, title, artist)
+	result := client.FindBestMatch(tracks, title, artist, "")
 
 	if result != nil {
 		t.Logf("Found match: '%s' by '%s' (ID: %s)", result.Title, result.Artist, result.ID)
@@ -1929,7 +1970,7 @@ func TestSpecificIncorrectMatches(t *testing.T) {
 		t.Run(fmt.Sprintf("%s_by_%s", tc.title, tc.artist), func(t *testing.T) {
 			tracks := []PlexTrack{koreanTrack}
 
-			result := client.FindBestMatch(tracks, tc.title, tc.artist)
+			result := client.FindBestMatch(tracks, tc.title, tc.artist, "")
 
 			if result != nil {
 			} else {
@@ -2301,7 +2342,7 @@ func TestArtistSimilarityCheck(t *testing.T) {
 			}
 
 			// Use FindBestMatch to see if it would match
-			result := client.FindBestMatch(library, tc.sourceTitle, tc.sourceArtist)
+			result := client.FindBestMatch(library, tc.sourceTitle, tc.sourceArtist, "")
 
 			if tc.shouldMatch {
 				if result == nil {
@@ -2361,7 +2402,7 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Test that the search would find the match using the featuring-removed title
 		// This simulates the fourth priority in SearchTrack method
-		result := client.FindBestMatch(mockLibrary, featuringRemoved, srcTrack.Artist)
+		result := client.FindBestMatch(mockLibrary, featuringRemoved, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Errorf("FindBestMatch should find '%s' by '%s' when searching with featuring-removed title '%s'",
@@ -2377,7 +2418,7 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Verify that the original title with "featuring" would NOT match
 		// This ensures the featuring removal is necessary for the match
-		originalResult := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
+		originalResult := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist, "")
 		if originalResult != nil {
 			t.Logf("Note: Original title '%s' also matches, which is acceptable", srcTrack.Name)
 		}
@@ -2399,11 +2440,11 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Test that searching with the full title (including featuring) would fail
 		// This simulates the scenario where no other match priorities work
-		fullTitleResult := client.FindBestMatch(plexLibrary, srcTrack.Name, srcTrack.Artist)
+		fullTitleResult := client.FindBestMatch(plexLibrary, srcTrack.Name, srcTrack.Artist, "")
 
 		// Test that searching with featuring removed would succeed
 		featuringRemoved := client.removeFeaturing(srcTrack.Name)
-		featuringResult := client.FindBestMatch(plexLibrary, featuringRemoved, srcTrack.Artist)
+		featuringResult := client.FindBestMatch(plexLibrary, featuringRemoved, srcTrack.Artist, "")
 
 		// Verify that featuring removal enables the match
 		if featuringResult == nil {
@@ -2424,7 +2465,7 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 		// to verify that featuring removal is used as the fourth priority
 
 		// Step 1: Try exact title/artist match (first priority)
-		exactResult := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
+		exactResult := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist, "")
 		t.Logf("Step 1 (Exact match): %v", exactResult != nil)
 
 		// Step 2: Check for single quotes (second priority) - not applicable here
@@ -2433,12 +2474,12 @@ func TestSearchByTitleWithFeaturingRemoval(t *testing.T) {
 
 		// Step 3: Try with brackets removed (third priority)
 		bracketsRemoved := client.removeBrackets(srcTrack.Name)
-		bracketsResult := client.FindBestMatch(mockLibrary, bracketsRemoved, srcTrack.Artist)
+		bracketsResult := client.FindBestMatch(mockLibrary, bracketsRemoved, srcTrack.Artist, "")
 		t.Logf("Step 3 (Brackets removed): %v", bracketsResult != nil)
 
 		// Step 4: Try with featuring removed (fourth priority) - this is what we're testing
 		featuringRemoved := client.removeFeaturing(srcTrack.Name)
-		featuringResult := client.FindBestMatch(mockLibrary, featuringRemoved, srcTrack.Artist)
+		featuringResult := client.FindBestMatch(mockLibrary, featuringRemoved, srcTrack.Artist, "")
 		t.Logf("Step 4 (Featuring removed): %v", featuringResult != nil)
 
 		// Verify that featuring removal produces the expected title
@@ -2556,7 +2597,7 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test with FindBestMatch to see if it would match
 		mockLibrary := []PlexTrack{plexTrack}
-		result := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist, "")
 
 		if result != nil {
 			t.Logf("Current FindBestMatch found: '%s' by '%s'", result.Title, result.Artist)
@@ -2600,7 +2641,7 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test FindBestMatch with normalized strings
 		mockLibrary := []PlexTrack{plexTrack}
-		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, srcTrack.Name, srcTrack.Artist)
+		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, srcTrack.Name, srcTrack.Artist, "")
 		if normalizedResult == nil {
 			t.Errorf("Expected FindBestMatchWithNormalizedPunctuation to find a match")
 		} else {
@@ -2696,7 +2737,7 @@ func TestPunctuationMatching(t *testing.T) {
 
 		// Test FindBestMatch to see if it would match
 		mockLibrary := []PlexTrack{plexTrack}
-		result := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(mockLibrary, srcTrack.Name, srcTrack.Artist, "")
 
 		if result != nil {
 			t.Logf("FindBestMatch found: '%s' by '%s'", result.Title, result.Artist)
@@ -2705,7 +2746,7 @@ func TestPunctuationMatching(t *testing.T) {
 		}
 
 		// Test FindBestMatchWithNormalizedPunctuation
-		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, srcTrack.Name, srcTrack.Artist)
+		normalizedResult := client.FindBestMatchWithNormalizedPunctuation(mockLibrary, srcTrack.Name, srcTrack.Artist, "")
 		if normalizedResult == nil {
 			t.Errorf("Expected FindBestMatchWithNormalizedPunctuation to find a match")
 		} else {
@@ -2763,7 +2804,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 
 	t.Run("ExactIssueScenario", func(t *testing.T) {
 		// Test that the correct match is found
-		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Errorf("Expected to find a match for 'Do It' by 'Chloe x Halle'")
@@ -2783,7 +2824,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 
 	t.Run("NormalizedPunctuationMatch", func(t *testing.T) {
 		// Test with the normalized punctuation function
-		result := client.FindBestMatchWithNormalizedPunctuation(plexTracks, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatchWithNormalizedPunctuation(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Errorf("Expected to find a match with normalized punctuation")
@@ -2806,7 +2847,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 		// This simulates the issue where "Let's Do It Again" by "TLC" was matching instead
 
 		// Search for a track that might have a similar name
-		result := client.FindBestMatch(plexTracks, "Do It", "Chloe x Halle")
+		result := client.FindBestMatch(plexTracks, "Do It", "Chloe x Halle", "")
 
 		if result == nil {
 			t.Errorf("Expected to find a match for 'Do It' by 'Chloe x Halle'")
@@ -2852,7 +2893,7 @@ func TestChloeXHalleIssueFix(t *testing.T) {
 			{ID: "1", Title: "DANCE\u2026", Artist: "Slayyyter"},
 		}
 
-		result := client.FindBestMatch(plexTracks, "DANCE...", "Slayyyter")
+		result := client.FindBestMatch(plexTracks, "DANCE...", "Slayyyter", "")
 
 		if result == nil {
 			t.Errorf("Expected to find a match for 'DANCE...' by 'Slayyyter' but got nil")
@@ -3139,7 +3180,7 @@ func TestJessieWareSpotlightSingleEditMatching(t *testing.T) {
 	}
 
 	// Test that FindBestMatch can find the track
-	result := client.FindBestMatch(plexLibrary, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(plexLibrary, srcTrack.Name, srcTrack.Artist, "")
 	if result == nil {
 		t.Errorf("Expected to find match for 'Spotlight - Single Edit' by 'Jessie Ware'")
 	} else {
@@ -3211,7 +3252,7 @@ func TestGetItRightMatchingScenario(t *testing.T) {
 
 	// Test FindBestMatch with the cleaned title
 	tracks := []PlexTrack{plexTrack}
-	result := client.FindBestMatch(tracks, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(tracks, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Get It Right' by 'Diplo'")
@@ -3267,7 +3308,7 @@ func TestGetItRightSearchSimulation(t *testing.T) {
 	t.Logf("Searching for '%s' by '%s' among %d results", srcTrack.Name, srcTrack.Artist, len(searchResults))
 
 	// Test FindBestMatch with the search results
-	result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Get It Right' by 'Diplo'")
@@ -3355,7 +3396,7 @@ func TestGetItRightVariousArtistsScenario(t *testing.T) {
 
 	// Test the current matching logic
 	tracks := []PlexTrack{plexTrack}
-	result := client.FindBestMatch(tracks, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(tracks, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Log("❌ FindBestMatch failed to find a match (expected due to artist mismatch)")
@@ -3430,7 +3471,7 @@ func TestGetItRightRealWorldScenario(t *testing.T) {
 	t.Logf("Expected match: Track 1 - '%s' by '%s' (Various Artists compilation)", searchResults[0].Title, searchResults[0].Artist)
 
 	// Test FindBestMatch with the search results
-	result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(searchResults, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Get It Right' by 'Diplo' in the Various Artists compilation")
@@ -3487,7 +3528,7 @@ func TestArtistFeaturingRemoval(t *testing.T) {
 	}
 
 	// Test FindBestMatch
-	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'The Field' by 'Blood Orange'")
@@ -3558,7 +3599,7 @@ func TestRemixWithFeaturingMatching(t *testing.T) {
 	}
 
 	// Test FindBestMatch
-	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Timeless (feat. Playboi Carti & Doechii) - Remix' by 'The Weeknd'")
@@ -3616,7 +3657,7 @@ func TestMovieSoundtrackMatching(t *testing.T) {
 	t.Logf("After RemoveCommonSuffixes: '%s'", cleanedTitle)
 
 	// Test FindBestMatch
-	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+	result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 	if result == nil {
 		t.Error("Expected FindBestMatch to find a match for 'Friend Of Mine - from the Smurfs Movie Soundtrack' by 'Greyson Chance'")
@@ -3722,7 +3763,7 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 	})
 
 	t.Run("FindBestMatchFindsCorrectTrack", func(t *testing.T) {
-		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(plexTracks, srcTrack.Name, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Fatal("Expected to find a match, got nil")
@@ -3738,7 +3779,7 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 
 	t.Run("FindBestMatchWithSuffixRemovedTitle", func(t *testing.T) {
 		cleanedTitle := client.RemoveCommonSuffixes(srcTrack.Name)
-		result := client.FindBestMatch(plexTracks, cleanedTitle, srcTrack.Artist)
+		result := client.FindBestMatch(plexTracks, cleanedTitle, srcTrack.Artist, "")
 
 		if result == nil {
 			t.Fatal("Expected to find a match with cleaned title, got nil")
@@ -3803,7 +3844,7 @@ func TestFromQuotedTitleMatchingScenario(t *testing.T) {
 			},
 		}
 
-		result := client.FindBestMatch(wrongTracks, srcTrack.Name, srcTrack.Artist)
+		result := client.FindBestMatch(wrongTracks, srcTrack.Name, srcTrack.Artist, "")
 		if result != nil {
 			t.Errorf("Should not match unrelated track, but matched '%s' by '%s'",
 				result.Title, result.Artist)
