@@ -61,14 +61,15 @@ type Client struct {
 
 // PlexTrack represents a track from Plex
 type PlexTrack struct {
-	ID        string `xml:"ratingKey,attr"`
-	Title     string `xml:"title,attr"`
-	Artist    string `xml:"grandparentTitle,attr"`
-	Album     string `xml:"parentTitle,attr"`
-	Duration  int    `xml:"duration,attr"`
-	AddedAt   string `xml:"addedAt,attr"`
-	UpdatedAt string `xml:"updatedAt,attr"`
-	File      string `xml:"file,attr"`
+	ID             string `xml:"ratingKey,attr"`
+	PlaylistItemID string `xml:"playlistItemID,attr"` // row id when Track appears inside a playlist /items response
+	Title          string `xml:"title,attr"`
+	Artist         string `xml:"grandparentTitle,attr"`
+	Album          string `xml:"parentTitle,attr"`
+	Duration       int    `xml:"duration,attr"`
+	AddedAt        string `xml:"addedAt,attr"`
+	UpdatedAt      string `xml:"updatedAt,attr"`
+	File           string `xml:"file,attr"`
 }
 
 // PlexPlaylist represents a Plex playlist

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -318,7 +319,101 @@ func (c *Client) GetPlaylistItems(ctx context.Context, playlistID string) ([]Ple
 	return all, nil
 }
 
-// AddTracksToPlaylist adds tracks to an existing playlist
+var leafCountAddedXMLRe = regexp.MustCompile(`(?i)leafCountAdded="([0-9]+)"`)
+
+func parseLeafCountAdded(body []byte) (n int, ok bool) {
+	m := leafCountAddedXMLRe.FindSubmatch(body)
+	if len(m) < 2 {
+		return 0, false
+	}
+	v, err := strconv.Atoi(string(m[1]))
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// getPlaylistTrackAt returns a single playlist row by 0-based index (GET .../items with container window).
+func (c *Client) getPlaylistTrackAt(ctx context.Context, playlistID string, index int) (*PlexTrack, error) {
+	if index < 0 {
+		return nil, fmt.Errorf("negative playlist index %d", index)
+	}
+	reqURL := fmt.Sprintf("%s/playlists/%s/items", c.baseURL, playlistID)
+	params := url.Values{}
+	params.Add("X-Plex-Token", c.token)
+	params.Add("X-Plex-Container-Start", strconv.Itoa(index))
+	params.Add("X-Plex-Container-Size", "1")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/xml")
+	req.Header.Set("X-Plex-Token", c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	if resp.StatusCode != StatusOK {
+		return nil, fmt.Errorf("playlist items API status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var container plexPlaylistItemsContainer
+	if err := xml.Unmarshal(body, &container); err != nil {
+		return nil, fmt.Errorf("decode playlist items: %w", err)
+	}
+	if len(container.Tracks) != 1 {
+		return nil, fmt.Errorf("expected 1 playlist row at index %d, got %d", index, len(container.Tracks))
+	}
+	t := container.Tracks[0]
+	return &t, nil
+}
+
+func (c *Client) putPlaylistTrack(ctx context.Context, playlistID, trackID, afterPlaylistItemID string) (leafAdded int, err error) {
+	reqURL := fmt.Sprintf("%s/playlists/%s/items", c.baseURL, playlistID)
+	params := url.Values{}
+	params.Add("X-Plex-Token", c.token)
+	params.Add("uri", fmt.Sprintf("server://%s/com.plexapp.plugins.library/library/metadata/%s", c.serverID, trackID))
+	if strings.TrimSpace(afterPlaylistItemID) != "" {
+		params.Add("after", afterPlaylistItemID)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL+"?"+params.Encode(), nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/xml")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if readErr != nil {
+		return 0, readErr
+	}
+	if resp.StatusCode != StatusOK {
+		return 0, fmt.Errorf("plex add-to-playlist status %d for track %s: %s", resp.StatusCode, trackID, string(body))
+	}
+	n, ok := parseLeafCountAdded(body)
+	if !ok {
+		// Some responses omit leafCountAdded; treat as success for backward compatibility.
+		n = 1
+	}
+	return n, nil
+}
+
+// AddTracksToPlaylist adds tracks to an existing playlist in source order.
+// Plex deduplicates bare PUT adds of the same library track; after the first row, each add uses after=<previous playlistItemID>
+// so the same ratingKey can appear multiple times (matching source playlists with repeats).
 func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	if len(trackIDs) == 0 {
 		return nil
@@ -326,65 +421,31 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 
 	slog.Info(fmt.Sprintf("Adding %d tracks to playlist %s", len(trackIDs), playlistID))
 
-	// Add tracks one by one using the correct Plex API format
-	successCount := 0
-	for _, trackID := range trackIDs {
-
-		// Build request URL - use the correct Plex API endpoint
-		reqURL := fmt.Sprintf("%s/playlists/%s/items", c.baseURL, playlistID)
-		params := url.Values{}
-		params.Add("X-Plex-Token", c.token)
-		params.Add("uri", fmt.Sprintf("server://%s/com.plexapp.plugins.library/library/metadata/%s", c.serverID, trackID))
-
-		req, err := http.NewRequestWithContext(ctx, "PUT", reqURL+"?"+params.Encode(), nil)
+	var after string
+	for i, trackID := range trackIDs {
+		if i > 0 && strings.TrimSpace(after) == "" {
+			return fmt.Errorf("internal: empty playlistItemID anchor before add %d", i)
+		}
+		leaf, err := c.putPlaylistTrack(ctx, playlistID, trackID, after)
 		if err != nil {
-			slog.Info(fmt.Sprintf("Failed to create request for track %s: %v", trackID, err))
-			continue
+			return fmt.Errorf("add track %s to playlist %s: %w", trackID, playlistID, err)
 		}
-
-		req.Header.Set("Accept", "application/xml")
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-		resp, err := c.httpClient.Do(req)
+		if leaf < 1 {
+			return fmt.Errorf("plex did not add track %s to playlist %s (leafCountAdded=0); repeating the same library item requires Plex append-after (after=) support", trackID, playlistID)
+		}
+		lastIdx := i
+		last, err := c.getPlaylistTrackAt(ctx, playlistID, lastIdx)
 		if err != nil {
-			slog.Info(fmt.Sprintf("Failed to make request for track %s: %v", trackID, err))
-			continue
+			return fmt.Errorf("read playlist row after add: %w", err)
 		}
-		body, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			slog.Info(fmt.Sprintf("Failed to read response for track %s: %v", trackID, readErr))
-			continue
+		if strings.TrimSpace(last.PlaylistItemID) == "" {
+			return fmt.Errorf("playlist row at index %d has no playlistItemID (cannot append further items)", lastIdx)
 		}
-
-		if resp.StatusCode != StatusOK {
-			c.debugLog("Plex API returned status %d for track %s: %s", resp.StatusCode, trackID, string(body))
-			continue
-		}
-		if len(body) > 0 {
-			// Check if the response indicates the track was added
-			if strings.Contains(string(body), "leafCountAdded") {
-				c.debugLog("Track %s: API response received", trackID)
-			}
-
-			// Check if tracks were actually added
-			if strings.Contains(string(body), `leafCountAdded="0"`) {
-				c.debugLog("⚠️  Warning: Track %s was not added (leafCountAdded=0)", trackID)
-				// Don't count as success if track wasn't actually added
-				continue
-			} else if strings.Contains(string(body), `leafCountAdded="1"`) {
-				c.debugLog("✅ Track %s was successfully added", trackID)
-			}
-		}
-
-		successCount++
+		after = last.PlaylistItemID
+		c.debugLog("playlist append anchor after index %d: playlistItemID=%s", lastIdx, after)
 	}
 
-	if successCount == 0 {
-		return fmt.Errorf("failed to add any tracks to playlist - this may be due to server configuration restrictions or playlist permissions. Please check if playlist modifications are enabled on your Plex server and ensure your token has write permissions")
-	}
-
-	c.debugLog("Successfully processed %d/%d tracks for playlist %s", successCount, len(trackIDs), playlistID)
+	c.debugLog("Successfully added %d tracks to playlist %s", len(trackIDs), playlistID)
 	return nil
 }
 
