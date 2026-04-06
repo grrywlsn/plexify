@@ -24,7 +24,7 @@ func TestChunkTrackIDsByCommaLen_splitsOnRepeatedKey(t *testing.T) {
 			want:   [][]string{{"11"}, {"11"}},
 		},
 		{
-			name:   "duplicate after other keys",
+			name:   "repeat after other keys flushes prior batch then solo repeat",
 			ids:    []string{"1", "2", "1"},
 			maxLen: 100,
 			want:   [][]string{{"1", "2"}, {"1"}},
@@ -55,6 +55,15 @@ func TestChunkTrackIDsByCommaLen_splitsOnRepeatedKey(t *testing.T) {
 func TestChunkTrackIDsByCommaLen_respectsMaxItems(t *testing.T) {
 	got := chunkTrackIDsByCommaLen([]string{"1", "2", "3", "4"}, 100, 2)
 	want := [][]string{{"1", "2"}, {"3", "4"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v want %#v", got, want)
+	}
+}
+
+func TestChunkTrackIDsByCommaLen_repeatFlushesBeforeMaxItemsCap(t *testing.T) {
+	// Repeat must not share a comma batch with earlier keys; flush [1,2] before solo [1].
+	got := chunkTrackIDsByCommaLen([]string{"1", "2", "1"}, 100, 2)
+	want := [][]string{{"1", "2"}, {"1"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %#v want %#v", got, want)
 	}

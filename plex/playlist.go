@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -344,8 +343,9 @@ func (c *Client) playlistCommaKeyBudget() int {
 
 // chunkTrackIDsByCommaLen splits rating keys into batches so strings.Join(batch, ",") length stays within maxLen
 // and each batch has at most maxItems keys.
-// Plex deduplicates repeated rating keys inside a single metadata URI, so each batch must not list the same key twice;
-// a second instance starts a new batch (AddTracksToPlaylist links batches with after=).
+// Plex also omits a rating key from a comma batch when that library item is already on the playlist from an earlier
+// batch in the same sync (leafCountAdded short). Every repeat play (2nd+ occurrence of the same key in trackIDs)
+// is therefore emitted as its own single-key batch; AddTracksToPlaylist chains batches with after=.
 func chunkTrackIDsByCommaLen(trackIDs []string, maxLen, maxItems int) [][]string {
 	if maxLen < 1 {
 		maxLen = 4000
@@ -356,16 +356,23 @@ func chunkTrackIDsByCommaLen(trackIDs []string, maxLen, maxItems int) [][]string
 	var out [][]string
 	var cur []string
 	curLen := 0
+	seen := make(map[string]struct{})
 	for _, id := range trackIDs {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
 		}
-		if len(cur) > 0 && slices.Contains(cur, id) {
-			out = append(out, cur)
-			cur = nil
-			curLen = 0
+		if _, repeat := seen[id]; repeat {
+			if len(cur) > 0 {
+				out = append(out, cur)
+				cur = nil
+				curLen = 0
+			}
+			out = append(out, []string{id})
+			continue
 		}
+		seen[id] = struct{}{}
+
 		if len(cur) >= maxItems {
 			out = append(out, cur)
 			cur = nil
@@ -486,8 +493,8 @@ func (c *Client) playlistPutLibraryMetadataBatch(ctx context.Context, playlistID
 }
 
 // AddTracksToPlaylist adds tracks to an existing playlist in source order, including duplicate library tracks.
-// Comma-separated metadata URIs add many distinct keys per PUT; Plex still dedupes the same key twice in one URI,
-// so chunkTrackIDsByCommaLen never repeats a rating key in the same batch. Additional batches use after=<tail playlistItemID>.
+// Comma-separated metadata URIs are limited per batch; repeat plays use single-key batches so Plex does not skip
+// keys already present from earlier batches in the same run. Chunks are linked with after=<tail playlistItemID>.
 func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	if len(trackIDs) == 0 {
 		return nil
@@ -523,7 +530,7 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 			return fmt.Errorf("add playlist batch at offset %d: %w", runLen, err)
 		}
 		if leaf < len(chunk) {
-			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); playlist may be partially updated — clear the playlist and retry, or set Client.playlistBatchMaxItems smaller (default 25) if your PMS caps comma batches", leaf, len(chunk))
+			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); playlist may be partially updated — clear the playlist and retry; if the source repeats the same track, ensure repeats use single-key batches (plexify chunks repeats globally)", leaf, len(chunk))
 		}
 		runLen += leaf
 		if ci < len(chunks)-1 {
