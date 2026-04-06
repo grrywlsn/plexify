@@ -55,6 +55,8 @@ type Client struct {
 	dryRun                bool
 	skipFullLibrarySearch bool
 	exactMatchesOnly      bool
+	// playlistBatchMaxCommaKeysLen is the max length of the comma-separated ratingKey segment in one PUT (0 = default 4000). Larger playlists are split across multiple PUTs; chunk boundaries use after=<playlistItemID>.
+	playlistBatchMaxCommaKeysLen int
 	// matchConfidencePercent is the minimum combined match score (0–100) as a fraction in minMatchScore; nil means use config.DefaultMatchConfidencePercent (for tests using &Client{}).
 	matchConfidencePercent *int
 }
