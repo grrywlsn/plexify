@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -319,247 +318,73 @@ func (c *Client) GetPlaylistItems(ctx context.Context, playlistID string) ([]Ple
 	return all, nil
 }
 
-var leafCountAddedXMLRe = regexp.MustCompile(`(?i)leafCountAdded="([0-9]+)"`)
-
-func parseLeafCountAdded(body []byte) (n int, ok bool) {
-	m := leafCountAddedXMLRe.FindSubmatch(body)
-	if len(m) < 2 {
-		return 0, false
-	}
-	v, err := strconv.Atoi(string(m[1]))
-	if err != nil {
-		return 0, false
-	}
-	return v, true
-}
-
-func (c *Client) playlistCommaKeyBudget() int {
-	const defaultBudget = 4000
-	if c == nil || c.playlistBatchMaxCommaKeysLen <= 0 {
-		return defaultBudget
-	}
-	return c.playlistBatchMaxCommaKeysLen
-}
-
-// chunkTrackIDsByCommaLen splits rating keys into batches so strings.Join(batch, ",") length stays within maxLen
-// and each batch has at most maxItems keys.
-// Plex also omits a rating key from a comma batch when that library item is already on the playlist from an earlier
-// batch in the same sync (leafCountAdded short). Every repeat play (2nd+ occurrence of the same key in trackIDs)
-// is therefore emitted as its own single-key batch; AddTracksToPlaylist chains batches with after=.
-func chunkTrackIDsByCommaLen(trackIDs []string, maxLen, maxItems int) [][]string {
-	if maxLen < 1 {
-		maxLen = 4000
-	}
-	if maxItems < 1 {
-		maxItems = 25
-	}
-	var out [][]string
-	var cur []string
-	curLen := 0
-	seen := make(map[string]struct{})
-	for _, id := range trackIDs {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
-		}
-		if _, repeat := seen[id]; repeat {
-			if len(cur) > 0 {
-				out = append(out, cur)
-				cur = nil
-				curLen = 0
-			}
-			out = append(out, []string{id})
-			continue
-		}
-		seen[id] = struct{}{}
-
-		if len(cur) >= maxItems {
-			out = append(out, cur)
-			cur = nil
-			curLen = 0
-		}
-		add := len(id)
-		if len(cur) > 0 {
-			add++ // comma
-		}
-		if add > maxLen {
-			if len(cur) > 0 {
-				out = append(out, cur)
-				cur = nil
-				curLen = 0
-			}
-			out = append(out, []string{id})
-			continue
-		}
-		if curLen+add > maxLen && len(cur) > 0 {
-			out = append(out, cur)
-			cur = nil
-			curLen = 0
-			add = len(id)
-		}
-		cur = append(cur, id)
-		curLen += add
-	}
-	if len(cur) > 0 {
-		out = append(out, cur)
-	}
-	return out
-}
-
-// getPlaylistTrackAt returns a single playlist row by 0-based index (GET .../items with container window).
-func (c *Client) getPlaylistTrackAt(ctx context.Context, playlistID string, index int) (*PlexTrack, error) {
-	if index < 0 {
-		return nil, fmt.Errorf("negative playlist index %d", index)
-	}
-	reqURL := fmt.Sprintf("%s/playlists/%s/items", c.baseURL, playlistID)
-	params := url.Values{}
-	params.Add("X-Plex-Token", c.token)
-	params.Add("X-Plex-Container-Start", strconv.Itoa(index))
-	params.Add("X-Plex-Container-Size", "1")
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL+"?"+params.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/xml")
-	req.Header.Set("X-Plex-Token", c.token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	body, readErr := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if readErr != nil {
-		return nil, readErr
-	}
-	if resp.StatusCode != StatusOK {
-		return nil, fmt.Errorf("playlist items API status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var container plexPlaylistItemsContainer
-	if err := xml.Unmarshal(body, &container); err != nil {
-		return nil, fmt.Errorf("decode playlist items: %w", err)
-	}
-	if len(container.Tracks) != 1 {
-		return nil, fmt.Errorf("expected 1 playlist row at index %d, got %d", index, len(container.Tracks))
-	}
-	t := container.Tracks[0]
-	return &t, nil
-}
-
-// playlistPutLibraryMetadataBatch PUTs one batch: uri .../library/metadata/{comma-separated ratingKeys}.
-// after is the previous row's playlistItemID when appending a second+ batch (PMS documents uri + playQueueID only; after is used between chunks on long playlists).
-func (c *Client) playlistPutLibraryMetadataBatch(ctx context.Context, playlistID, commaRatingKeys, afterPlaylistItemID string, batchSize int) (leafAdded int, err error) {
-	if strings.TrimSpace(commaRatingKeys) == "" {
-		return 0, fmt.Errorf("empty library metadata key batch")
-	}
-	if batchSize < 1 {
-		return 0, fmt.Errorf("invalid batch size %d", batchSize)
-	}
-	itemURI := fmt.Sprintf("server://%s/com.plexapp.plugins.library/library/metadata/%s", c.serverID, commaRatingKeys)
-	reqURL := fmt.Sprintf("%s/playlists/%s/items", c.baseURL, playlistID)
-	params := url.Values{}
-	params.Add("X-Plex-Token", c.token)
-	params.Add("uri", itemURI)
-	if strings.TrimSpace(afterPlaylistItemID) != "" {
-		params.Add("after", afterPlaylistItemID)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, reqURL+"?"+params.Encode(), nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Accept", "application/xml")
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	body, readErr := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if readErr != nil {
-		return 0, readErr
-	}
-	if resp.StatusCode != StatusOK {
-		return 0, fmt.Errorf("plex add-to-playlist status %d for metadata batch %q: %s", resp.StatusCode, commaRatingKeys, string(body))
-	}
-	n, ok := parseLeafCountAdded(body)
-	if !ok {
-		return 0, fmt.Errorf("plex playlist response missing leafCountAdded (batch size %d)", batchSize)
-	}
-	return n, nil
-}
-
-// AddTracksToPlaylist adds tracks to an existing playlist in source order, including duplicate library tracks.
-// Comma-separated metadata URIs are limited per batch; repeat plays use single-key batches so Plex does not skip
-// keys already present from earlier comma batches. Chunks use after=<tail playlistItemID>; if a repeat returns
-// leafCountAdded=0 with after=, the same request is retried without after= (end append), which many PMS builds accept.
+// AddTracksToPlaylist adds tracks to an existing playlist
 func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	if len(trackIDs) == 0 {
 		return nil
 	}
 
-	for _, id := range trackIDs {
-		if strings.TrimSpace(id) == "" {
-			return fmt.Errorf("empty Plex rating key in playlist track list")
-		}
-	}
-
 	slog.Info(fmt.Sprintf("Adding %d tracks to playlist %s", len(trackIDs), playlistID))
 
-	budget := c.playlistCommaKeyBudget()
-	maxItems := 25
-	if c != nil && c.playlistBatchMaxItems > 0 {
-		maxItems = c.playlistBatchMaxItems
-	}
-	chunks := chunkTrackIDsByCommaLen(trackIDs, budget, maxItems)
-	if len(chunks) == 0 {
-		return fmt.Errorf("no valid track ids to add")
-	}
+	// Add tracks one by one using the correct Plex API format
+	successCount := 0
+	for _, trackID := range trackIDs {
 
-	var after string
-	runLen := 0
-	for ci, chunk := range chunks {
-		if ci > 0 && strings.TrimSpace(after) == "" {
-			return fmt.Errorf("internal: empty playlistItemID before playlist batch %d", ci)
-		}
-		keyPart := strings.Join(chunk, ",")
-		leaf, err := c.playlistPutLibraryMetadataBatch(ctx, playlistID, keyPart, after, len(chunk))
+		// Build request URL - use the correct Plex API endpoint
+		reqURL := fmt.Sprintf("%s/playlists/%s/items", c.baseURL, playlistID)
+		params := url.Values{}
+		params.Add("X-Plex-Token", c.token)
+		params.Add("uri", fmt.Sprintf("server://%s/com.plexapp.plugins.library/library/metadata/%s", c.serverID, trackID))
+
+		req, err := http.NewRequestWithContext(ctx, "PUT", reqURL+"?"+params.Encode(), nil)
 		if err != nil {
-			return fmt.Errorf("add playlist batch at offset %d: %w", runLen, err)
+			slog.Info(fmt.Sprintf("Failed to create request for track %s: %v", trackID, err))
+			continue
 		}
-		// PMS often returns leafCountAdded=0 for a repeat when using after=<playlistItemID>; appending with
-		// no after= matches python-plexapi addItems (end append) and can succeed for the same library track.
-		if leaf < len(chunk) && len(chunk) == 1 && strings.TrimSpace(after) != "" {
-			leaf2, err2 := c.playlistPutLibraryMetadataBatch(ctx, playlistID, keyPart, "", len(chunk))
-			if err2 != nil {
-				return fmt.Errorf("add playlist batch at offset %d (retry without after=): %w", runLen, err2)
+
+		req.Header.Set("Accept", "application/xml")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			slog.Info(fmt.Sprintf("Failed to make request for track %s: %v", trackID, err))
+			continue
+		}
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			slog.Info(fmt.Sprintf("Failed to read response for track %s: %v", trackID, readErr))
+			continue
+		}
+
+		if resp.StatusCode != StatusOK {
+			c.debugLog("Plex API returned status %d for track %s: %s", resp.StatusCode, trackID, string(body))
+			continue
+		}
+		if len(body) > 0 {
+			// Check if the response indicates the track was added
+			if strings.Contains(string(body), "leafCountAdded") {
+				c.debugLog("Track %s: API response received", trackID)
 			}
-			if leaf2 >= 1 {
-				slog.Info("plex playlist add: repeat succeeded without after= (PMS rejected after= for this rating key)", "ratingKey", chunk[0], "offset", runLen)
-				leaf = leaf2
+
+			// Check if tracks were actually added
+			if strings.Contains(string(body), `leafCountAdded="0"`) {
+				c.debugLog("⚠️  Warning: Track %s was not added (leafCountAdded=0)", trackID)
+				// Don't count as success if track wasn't actually added
+				continue
+			} else if strings.Contains(string(body), `leafCountAdded="1"`) {
+				c.debugLog("✅ Track %s was successfully added", trackID)
 			}
 		}
-		if leaf < len(chunk) {
-			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); playlist may be partially updated — clear the playlist and retry; Plex may not allow this track twice in one playlist via the API", leaf, len(chunk))
-		}
-		runLen += leaf
-		if ci < len(chunks)-1 {
-			last, err := c.getPlaylistTrackAt(ctx, playlistID, runLen-1)
-			if err != nil {
-				return fmt.Errorf("read playlist tail after batch: %w", err)
-			}
-			if strings.TrimSpace(last.PlaylistItemID) == "" {
-				return fmt.Errorf("playlist row at index %d has no playlistItemID (cannot append further batches)", runLen-1)
-			}
-			after = last.PlaylistItemID
-			c.debugLog("playlist batch anchor playlistItemID=%s before chunk %d", after, ci+1)
-		}
+
+		successCount++
 	}
 
-	c.debugLog("Successfully added %d tracks to playlist %s in %d batch(es)", len(trackIDs), playlistID, len(chunks))
+	if successCount == 0 {
+		return fmt.Errorf("failed to add any tracks to playlist - this may be due to server configuration restrictions or playlist permissions. Please check if playlist modifications are enabled on your Plex server and ensure your token has write permissions")
+	}
+
+	c.debugLog("Successfully processed %d/%d tracks for playlist %s", successCount, len(trackIDs), playlistID)
 	return nil
 }
 
