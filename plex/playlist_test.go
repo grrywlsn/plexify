@@ -44,11 +44,19 @@ func TestChunkTrackIDsByCommaLen_splitsOnRepeatedKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := chunkTrackIDsByCommaLen(tt.ids, tt.maxLen)
+			got := chunkTrackIDsByCommaLen(tt.ids, tt.maxLen, 100)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("got %#v want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestChunkTrackIDsByCommaLen_respectsMaxItems(t *testing.T) {
+	got := chunkTrackIDsByCommaLen([]string{"1", "2", "3", "4"}, 100, 2)
+	want := [][]string{{"1", "2"}, {"3", "4"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %#v want %#v", got, want)
 	}
 }
 

@@ -342,12 +342,16 @@ func (c *Client) playlistCommaKeyBudget() int {
 	return c.playlistBatchMaxCommaKeysLen
 }
 
-// chunkTrackIDsByCommaLen splits rating keys into batches so strings.Join(batch, ",") length stays within maxLen.
+// chunkTrackIDsByCommaLen splits rating keys into batches so strings.Join(batch, ",") length stays within maxLen
+// and each batch has at most maxItems keys.
 // Plex deduplicates repeated rating keys inside a single metadata URI, so each batch must not list the same key twice;
 // a second instance starts a new batch (AddTracksToPlaylist links batches with after=).
-func chunkTrackIDsByCommaLen(trackIDs []string, maxLen int) [][]string {
+func chunkTrackIDsByCommaLen(trackIDs []string, maxLen, maxItems int) [][]string {
 	if maxLen < 1 {
 		maxLen = 4000
+	}
+	if maxItems < 1 {
+		maxItems = 25
 	}
 	var out [][]string
 	var cur []string
@@ -358,6 +362,11 @@ func chunkTrackIDsByCommaLen(trackIDs []string, maxLen int) [][]string {
 			continue
 		}
 		if len(cur) > 0 && slices.Contains(cur, id) {
+			out = append(out, cur)
+			cur = nil
+			curLen = 0
+		}
+		if len(cur) >= maxItems {
 			out = append(out, cur)
 			cur = nil
 			curLen = 0
@@ -471,11 +480,7 @@ func (c *Client) playlistPutLibraryMetadataBatch(ctx context.Context, playlistID
 	}
 	n, ok := parseLeafCountAdded(body)
 	if !ok {
-		if batchSize == 1 {
-			n = 1
-		} else {
-			return 0, fmt.Errorf("plex playlist response missing leafCountAdded (batch size %d)", batchSize)
-		}
+		return 0, fmt.Errorf("plex playlist response missing leafCountAdded (batch size %d)", batchSize)
 	}
 	return n, nil
 }
@@ -497,7 +502,11 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 	slog.Info(fmt.Sprintf("Adding %d tracks to playlist %s", len(trackIDs), playlistID))
 
 	budget := c.playlistCommaKeyBudget()
-	chunks := chunkTrackIDsByCommaLen(trackIDs, budget)
+	maxItems := 25
+	if c != nil && c.playlistBatchMaxItems > 0 {
+		maxItems = c.playlistBatchMaxItems
+	}
+	chunks := chunkTrackIDsByCommaLen(trackIDs, budget, maxItems)
 	if len(chunks) == 0 {
 		return fmt.Errorf("no valid track ids to add")
 	}
@@ -514,7 +523,7 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 			return fmt.Errorf("add playlist batch at offset %d: %w", runLen, err)
 		}
 		if leaf < len(chunk) {
-			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); try lowering playlist size or check server limits", leaf, len(chunk))
+			return fmt.Errorf("plex added %d items from a batch of %d (leafCountAdded short); playlist may be partially updated — clear the playlist and retry, or set Client.playlistBatchMaxItems smaller (default 25) if your PMS caps comma batches", leaf, len(chunk))
 		}
 		runLen += leaf
 		if ci < len(chunks)-1 {
