@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -342,6 +343,8 @@ func (c *Client) playlistCommaKeyBudget() int {
 }
 
 // chunkTrackIDsByCommaLen splits rating keys into batches so strings.Join(batch, ",") length stays within maxLen.
+// Plex deduplicates repeated rating keys inside a single metadata URI, so each batch must not list the same key twice;
+// a second instance starts a new batch (AddTracksToPlaylist links batches with after=).
 func chunkTrackIDsByCommaLen(trackIDs []string, maxLen int) [][]string {
 	if maxLen < 1 {
 		maxLen = 4000
@@ -353,6 +356,11 @@ func chunkTrackIDsByCommaLen(trackIDs []string, maxLen int) [][]string {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
+		}
+		if len(cur) > 0 && slices.Contains(cur, id) {
+			out = append(out, cur)
+			cur = nil
+			curLen = 0
 		}
 		add := len(id)
 		if len(cur) > 0 {
@@ -473,9 +481,8 @@ func (c *Client) playlistPutLibraryMetadataBatch(ctx context.Context, playlistID
 }
 
 // AddTracksToPlaylist adds tracks to an existing playlist in source order, including duplicate library tracks.
-// Plex deduplicates repeated PUTs of the same single ratingKey; batches use a comma-separated metadata URI
-// (same approach as python-plexapi) so identical tracks can appear multiple times. Very long playlists are
-// split into multiple batches; batches after the first pass after=<last playlistItemID> when the server accepts it.
+// Comma-separated metadata URIs add many distinct keys per PUT; Plex still dedupes the same key twice in one URI,
+// so chunkTrackIDsByCommaLen never repeats a rating key in the same batch. Additional batches use after=<tail playlistItemID>.
 func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, trackIDs []string) error {
 	if len(trackIDs) == 0 {
 		return nil

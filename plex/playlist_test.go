@@ -5,11 +5,54 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
 
-func TestAddTracksToPlaylist_duplicateLibraryTrackUsesCommaMetadataURI(t *testing.T) {
+func TestChunkTrackIDsByCommaLen_splitsOnRepeatedKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		ids    []string
+		maxLen int
+		want   [][]string
+	}{
+		{
+			name:   "consecutive duplicate",
+			ids:    []string{"11", "11"},
+			maxLen: 100,
+			want:   [][]string{{"11"}, {"11"}},
+		},
+		{
+			name:   "duplicate after other keys",
+			ids:    []string{"1", "2", "1"},
+			maxLen: 100,
+			want:   [][]string{{"1", "2"}, {"1"}},
+		},
+		{
+			name:   "no duplicate single batch",
+			ids:    []string{"1", "2", "3"},
+			maxLen: 100,
+			want:   [][]string{{"1", "2", "3"}},
+		},
+		{
+			name:   "triple same key",
+			ids:    []string{"9", "9", "9"},
+			maxLen: 50,
+			want:   [][]string{{"9"}, {"9"}, {"9"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := chunkTrackIDsByCommaLen(tt.ids, tt.maxLen)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("got %#v want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAddTracksToPlaylist_duplicateLibraryTrackSplitsBatchesUsesAfter(t *testing.T) {
 	var putCalls, getCalls int
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,16 +64,37 @@ func TestAddTracksToPlaylist_duplicateLibraryTrackUsesCommaMetadataURI(t *testin
 		case http.MethodPut:
 			putCalls++
 			uri := r.URL.Query().Get("uri")
-			if r.URL.Query().Get("after") != "" {
-				t.Errorf("unexpected after= on single-batch duplicate add: %q", r.URL.Query().Get("after"))
+			after := r.URL.Query().Get("after")
+			switch putCalls {
+			case 1:
+				if after != "" {
+					t.Errorf("first PUT should not use after=, got %q", after)
+				}
+				if strings.Contains(uri, ",") {
+					t.Errorf("first batch should be single key, uri=%q", uri)
+				}
+				if !strings.Contains(uri, "/library/metadata/11") {
+					t.Errorf("expected metadata/11 in uri, got %q", uri)
+				}
+				_, _ = fmt.Fprintf(w, `<MediaContainer leafCountAdded="1"/>`)
+			case 2:
+				if after != "100" {
+					t.Errorf("second PUT after= want 100, got %q", after)
+				}
+				if !strings.Contains(uri, "/library/metadata/11") {
+					t.Errorf("second batch uri should contain metadata/11, got %q", uri)
+				}
+				_, _ = fmt.Fprintf(w, `<MediaContainer leafCountAdded="1"/>`)
+			default:
+				t.Fatalf("unexpected PUT #%d", putCalls)
 			}
-			if !strings.Contains(uri, "/library/metadata/11,11") {
-				t.Errorf("expected comma-separated rating keys in uri, got %q", uri)
-			}
-			_, _ = fmt.Fprintf(w, `<MediaContainer leafCountAdded="2"/>`)
 		case http.MethodGet:
 			getCalls++
-			http.Error(w, "unexpected GET in single-batch flow", http.StatusBadRequest)
+			if r.URL.Query().Get("X-Plex-Container-Start") != "0" {
+				http.Error(w, "unexpected start", http.StatusBadRequest)
+				return
+			}
+			_, _ = fmt.Fprintf(w, `<MediaContainer size="1" totalSize="2"><Track ratingKey="11" playlistItemID="100" title="One"/></MediaContainer>`)
 		default:
 			http.Error(w, "method", http.StatusMethodNotAllowed)
 		}
@@ -48,11 +112,11 @@ func TestAddTracksToPlaylist_duplicateLibraryTrackUsesCommaMetadataURI(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if putCalls != 1 {
-		t.Fatalf("expected 1 PUT, got %d", putCalls)
+	if putCalls != 2 {
+		t.Fatalf("expected 2 PUTs, got %d", putCalls)
 	}
-	if getCalls != 0 {
-		t.Fatalf("expected no GET, got %d", getCalls)
+	if getCalls != 1 {
+		t.Fatalf("expected 1 GET (tail after first batch), got %d", getCalls)
 	}
 }
 
