@@ -39,6 +39,9 @@ func TestAcceptIdentityTransport_SetsIdentityWhenHeaderUnset(t *testing.T) {
 	if seen != "identity" {
 		t.Fatalf("Accept-Encoding: got %q, want identity", seen)
 	}
+	if got := req.Header.Get("Accept-Encoding"); got != "" {
+		t.Fatalf("caller request must not be mutated; Accept-Encoding got %q", got)
+	}
 }
 
 func TestAcceptIdentityTransport_PreservesExplicitAcceptEncoding(t *testing.T) {
