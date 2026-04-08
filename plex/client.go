@@ -127,17 +127,23 @@ func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
 
 	var baseTransport http.RoundTripper = http.DefaultTransport
 	if skipTLSVerify {
-		baseTransport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+			tr := dt.Clone()
+			tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+			baseTransport = tr
+		} else {
+			baseTransport = &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			}
 		}
 	}
 
 	rps := cfg.Plex.MaxRequestsPerSecond
+	var rt http.RoundTripper = baseTransport
 	if rps > 0 {
-		httpClient.Transport = newRateLimitedTransport(baseTransport, rps)
-	} else {
-		httpClient.Transport = baseTransport
+		rt = newRateLimitedTransport(baseTransport, rps)
 	}
+	httpClient.Transport = &acceptIdentityTransport{base: rt}
 
 	plexgoClient := plexgo.New(
 		plexgo.WithSecurity(cfg.Plex.Token),
