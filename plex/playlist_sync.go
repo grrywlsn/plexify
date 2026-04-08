@@ -98,6 +98,19 @@ func (c *Client) MatchSourceTracks(ctx context.Context, songs []track.Track) []M
 }
 
 func (c *Client) fillMatchResult(ctx context.Context, out *MatchResult, song track.Track) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.ErrorContext(ctx, "panic during Plex track search; marking track as error",
+				"recover", r, "artist", song.Artist, "title", song.Name)
+			*out = MatchResult{
+				SourceTrack: song,
+				PlexTrack:   nil,
+				MatchType:   MatchTypeError,
+				Confidence:  0,
+			}
+		}
+	}()
+
 	plexTr, matchType, err := c.SearchTrack(ctx, song)
 	if err != nil {
 		slog.InfoContext(ctx, "search error", "artist", song.Artist, "title", song.Name, "err", err)
@@ -198,6 +211,11 @@ func (c *Client) MatchPlaylist(ctx context.Context, songs []track.Track, playlis
 
 	existing, err := c.FindPlaylistByTitle(ctx, playlistName)
 	if err != nil {
+		if isTransientPlexErr(err) && ctx.Err() == nil {
+			slog.WarnContext(ctx, "could not list Plex playlists; skipping playlist sync for this run",
+				"err", err, "playlist", playlistName)
+			return results, nil, view, nil
+		}
 		return results, nil, view, err
 	}
 
@@ -205,8 +223,14 @@ func (c *Client) MatchPlaylist(ctx context.Context, songs []track.Track, playlis
 	if existing != nil {
 		oldItems, err = c.GetPlaylistItems(ctx, existing.ID)
 		if err != nil {
-			slog.InfoContext(ctx, "read playlist items for diff failed", "err", err)
-			return results, nil, view, fmt.Errorf("get playlist items for diff: %w", err)
+			if isTransientPlexErr(err) && ctx.Err() == nil {
+				slog.WarnContext(ctx, "could not read existing playlist tracks; diff will assume an empty playlist",
+					"err", err, "playlist", playlistName, "plex_playlist_id", existing.ID)
+				oldItems = nil
+			} else {
+				slog.InfoContext(ctx, "read playlist items for diff failed", "err", err)
+				return results, nil, view, fmt.Errorf("get playlist items for diff: %w", err)
+			}
 		}
 	}
 
@@ -222,6 +246,14 @@ func (c *Client) MatchPlaylist(ctx context.Context, songs []track.Track, playlis
 
 	playlist, err := c.EnsurePlaylistAndSync(ctx, playlistName, description, sourcePlaylistURL, artworkURL, trackIDs, existing)
 	if err != nil {
+		if isTransientPlexErr(err) && ctx.Err() == nil {
+			slog.WarnContext(ctx, "Plex playlist write failed after matching; matches are shown but playlist was not updated",
+				"err", err, "playlist", playlistName)
+			if existing != nil {
+				return results, existing, view, nil
+			}
+			return results, nil, view, nil
+		}
 		return results, playlist, view, err
 	}
 	return results, playlist, view, nil
