@@ -258,7 +258,7 @@ func (c *Client) GetServerInfo(ctx context.Context) (*PlexServerInfo, error) {
 	}
 
 	var serverInfo PlexServerInfo
-	if err := xml.NewDecoder(resp.Body).Decode(&serverInfo); err != nil {
+	if err := decodePlexResponseXML(resp, &serverInfo); err != nil {
 		return nil, fmt.Errorf("failed to decode server info response: %w", err)
 	}
 

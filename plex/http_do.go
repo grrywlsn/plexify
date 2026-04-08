@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -25,7 +26,12 @@ func (c *Client) httpDo(req *http.Request) (*http.Response, error) {
 		cancel()
 		return nil, err
 	}
-	resp.Body = &bodyCancelCloser{ReadCloser: resp.Body, cancel: cancel}
+	body := resp.Body
+	if body == nil {
+		// net/http usually sets a non-nil Body; guard so xml.NewDecoder never sees a nil Reader.
+		body = io.NopCloser(strings.NewReader(""))
+	}
+	resp.Body = &bodyCancelCloser{ReadCloser: body, cancel: cancel}
 	return resp, nil
 }
 
