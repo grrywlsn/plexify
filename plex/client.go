@@ -25,6 +25,10 @@ const (
 
 	// HTTP timeouts
 	DefaultHTTPTimeout = 30 * time.Second
+	// FullLibraryHTTPTimeout bounds /library/sections/{id}/all downloads. Those payloads can be
+	// large and slow; the default 30s deadline would cancel mid-body read and race net/http
+	// teardown vs the XML reader (heap corruption under GC in production).
+	FullLibraryHTTPTimeout = 30 * time.Minute
 
 	// Match types (typed string constants)
 	MatchTypeTitleArtist MatchKind = "title_artist"

@@ -2,7 +2,6 @@ package plex
 
 import (
 	"context"
-	"encoding/xml"
 	"fmt"
 	"log/slog"
 	"math"
@@ -387,7 +386,10 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	params.Add("X-Plex-Token", c.token)
 	params.Add("type", PlexMusicTrackType) // Type 10 = music tracks
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL+"?"+params.Encode(), nil)
+	libCtx, cancel := context.WithTimeout(ctx, FullLibraryHTTPTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(libCtx, "GET", reqURL+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create library request: %w", err)
 	}
@@ -405,7 +407,7 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	}
 
 	var libraryResp PlexResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&libraryResp); err != nil {
+	if err := decodePlexResponseXML(resp, &libraryResp); err != nil {
 		return nil, fmt.Errorf("failed to decode library response: %w", err)
 	}
 
