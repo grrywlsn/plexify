@@ -163,7 +163,7 @@ Boolean variables treat `1`, `true`, `yes`, and `on` (case-insensitive) as true;
 | `PLEX_INSECURE_SKIP_VERIFY` | _(unset → skip verify)_ | If **set**, truthy values skip TLS certificate verification; falsy values require verification. When **unset**, the default is to skip verify (LAN/self-signed friendly). |
 | `PLEX_VERIFY_TLS` | off | If true, verify HTTPS certificates (overrides insecure default). |
 | `PLEX_MATCH_CONCURRENCY` | `1` | Parallel Plex track lookups during matching (clamped to 1–32). |
-| `PLEX_MAX_REQUESTS_PER_SECOND` | `4` | Token-bucket cap on Plex HTTP requests per second; `0` = unlimited. |
+| `PLEX_MAX_REQUESTS_PER_SECOND` | `4` | Target average Plex HTTP requests per second (`~1/rps` spacing between starts); `0` = unlimited. |
 | `PLEXIFY_MATCH_CONFIDENCE_PERCENT` | `80` | Minimum combined title/artist match score to accept a track (integer 0–100, optional `%` suffix). |
 | `PLEXIFY_DRY_RUN` | off | Match and show diff only; do not create/clear/add playlists on Plex. |
 | `DRY_RUN` | off | Alias for `PLEXIFY_DRY_RUN`. |
