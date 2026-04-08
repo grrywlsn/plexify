@@ -101,8 +101,8 @@ func TestNewClient_RateLimitWrappedUnderAcceptIdentityTransport(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected rate limiter inside accept identity, got %T", outer.base)
 	}
-	if lim == nil || lim.base == nil {
-		t.Fatal("rateLimitedTransport not wired")
+	if lim.base == nil || lim.minGap <= 0 {
+		t.Fatalf("rateLimitedTransport not wired: base=%v minGap=%v", lim.base, lim.minGap)
 	}
 }
 

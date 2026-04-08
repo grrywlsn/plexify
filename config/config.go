@@ -37,7 +37,7 @@ type PlexConfig struct {
 	SkipFullLibrarySearch bool // if true, do not call /library/sections/{id}/all as last resort (PLEXIFY_FAST_SEARCH)
 	// ExactMatchesOnly uses only the first Plex search strategy (raw title/artist) and skips full-library scan (PLEXIFY_EXACT_MATCHES_ONLY).
 	ExactMatchesOnly bool
-	// MaxRequestsPerSecond caps outbound Plex HTTP requests (token bucket, burst 1). Default 4; 0 = unlimited (PLEX_MAX_REQUESTS_PER_SECOND).
+	// MaxRequestsPerSecond caps average Plex HTTP rate (~1/rps minimum spacing between request starts). Default 4; 0 = unlimited (PLEX_MAX_REQUESTS_PER_SECOND).
 	MaxRequestsPerSecond float64
 	// MatchConfidencePercent is the minimum combined title/artist match score (0–100) required to accept a Plex track. Default 80 (PLEXIFY_MATCH_CONFIDENCE_PERCENT).
 	MatchConfidencePercent int
