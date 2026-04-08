@@ -82,6 +82,15 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 			}
 			tr, err := strategy.fn(ctx, phase, song.Name, artist, song.Album)
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil, fmt.Errorf("search cancelled: %w", ctx.Err())
+				}
+				if isTransientPlexErr(err) {
+					slog.WarnContext(ctx, "plex search step failed; trying next strategy",
+						"err", err, "strategy", strategy.name, "phase", phase.tierLabel(),
+						"title", song.Name, "artist", artist)
+					continue
+				}
 				return nil, err
 			}
 			if tr != nil {
@@ -98,7 +107,16 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 		c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", song.Name, artist)
 		tr, err := c.searchEntireLibrary(ctx, song.Name, artist, song.Album)
 		if err != nil {
-			return nil, err
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("search cancelled: %w", ctx.Err())
+			}
+			if isTransientPlexErr(err) {
+				slog.WarnContext(ctx, "full library Plex scan failed; treating as no match for this track",
+					"err", err, "title", song.Name, "artist", artist)
+				tr, err = nil, nil
+			} else {
+				return nil, err
+			}
 		}
 		if tr != nil {
 			slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.Artist))
@@ -319,11 +337,12 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 
 	if resp.StatusCode == StatusOK {
 		var searchResp PlexResponse
-		if err := decodePlexResponseXML(resp, &searchResp); err == nil {
-			if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
-				slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.Artist))
-				return track, nil
-			}
+		if err := decodePlexResponseXML(resp, &searchResp); err != nil {
+			slog.WarnContext(ctx, "combined Plex search returned OK but XML decode failed; trying other strategies",
+				"err", err, "query", query)
+		} else if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
+			slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.Artist))
+			return track, nil
 		}
 	}
 
