@@ -123,7 +123,9 @@ func NewClient(cfg *config.Config) *Client {
 
 // NewClientWithTLSConfig creates a new Plex client. If skipTLSVerify is true, TLS certificate verification is disabled (default for many Plex HTTPS setups).
 func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
-	httpClient := &http.Client{Timeout: DefaultHTTPTimeout}
+	// Timeout must be 0: custom RoundTripper chains are not "known" to net/http, so
+	// Client.Timeout would use setRequestCancel's legacy path (broken vs synctest on Go 1.26+).
+	httpClient := &http.Client{Timeout: 0}
 
 	var baseTransport http.RoundTripper = http.DefaultTransport
 	if skipTLSVerify {
@@ -245,7 +247,7 @@ func (c *Client) GetServerInfo(ctx context.Context) (*PlexServerInfo, error) {
 
 	req.Header.Set("Accept", "application/xml")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make server info request: %w", err)
 	}

@@ -223,7 +223,7 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 
 	req.Header.Set("Accept", "application/xml")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make search request: %w", err)
 	}
@@ -271,7 +271,7 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum 
 
 	req.Header.Set("Accept", "application/xml")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make artist search request: %w", err)
 	}
@@ -312,7 +312,7 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 
 	req.Header.Set("Accept", "application/xml")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make combined search request: %w", err)
 	}
@@ -394,7 +394,7 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 
 	req.Header.Set("Accept", "application/xml")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make library request: %w", err)
 	}

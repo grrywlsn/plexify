@@ -72,7 +72,7 @@ func (c *Client) CreatePlaylist(ctx context.Context, title, description, trackUR
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("X-Plex-Token", c.token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make playlist creation request: %w", err)
 	}
@@ -142,7 +142,7 @@ func (c *Client) GetPlaylists(ctx context.Context) ([]PlexPlaylist, error) {
 		req.Header.Set("Accept", "application/xml")
 		req.Header.Set("X-Plex-Token", c.token)
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpDo(req)
 		if err != nil {
 			return nil, fmt.Errorf("failed to make playlists request: %w", err)
 		}
@@ -207,7 +207,7 @@ func (c *Client) UpdatePlaylistMetadata(ctx context.Context, playlistID, title, 
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("X-Plex-Token", c.token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return fmt.Errorf("failed to make playlist update request: %w", err)
 	}
@@ -240,7 +240,7 @@ func (c *Client) ClearPlaylist(ctx context.Context, playlistID string) error {
 	req.Header.Set("Accept", "application/xml")
 	req.Header.Set("X-Plex-Token", c.token)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpDo(req)
 	if err != nil {
 		return fmt.Errorf("failed to make playlist clear request: %w", err)
 	}
@@ -284,7 +284,7 @@ func (c *Client) GetPlaylistItems(ctx context.Context, playlistID string) ([]Ple
 		req.Header.Set("Accept", "application/xml")
 		req.Header.Set("X-Plex-Token", c.token)
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpDo(req)
 		if err != nil {
 			return nil, fmt.Errorf("playlist items request: %w", err)
 		}
@@ -345,7 +345,7 @@ func (c *Client) AddTracksToPlaylist(ctx context.Context, playlistID string, tra
 		req.Header.Set("Accept", "application/xml")
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpDo(req)
 		if err != nil {
 			slog.Info(fmt.Sprintf("Failed to make request for track %s: %v", trackID, err))
 			continue
