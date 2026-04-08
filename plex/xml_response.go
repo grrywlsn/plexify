@@ -2,6 +2,7 @@ package plex
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -11,6 +12,12 @@ import (
 // payloads are modest (search, server info): it avoids subtle failures when the
 // connection or context lifecycle interacts with a streaming decoder.
 func decodePlexResponseXML(resp *http.Response, v any) error {
+	if resp == nil {
+		return fmt.Errorf("nil response")
+	}
+	if resp.Body == nil {
+		return fmt.Errorf("nil response body")
+	}
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err

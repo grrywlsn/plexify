@@ -47,6 +47,65 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
+func TestNewClient_HTTPClientUsesZeroTimeoutAndAcceptIdentityTransport(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Plex: config.PlexConfig{
+			URL:                    "http://test.plex.server:32400",
+			Token:                  "test_token",
+			LibrarySectionID:       1,
+			ServerID:               "test_server_id",
+			MatchConfidencePercent: config.DefaultMatchConfidencePercent,
+			MaxRequestsPerSecond:   0,
+		},
+	}
+
+	client := NewClient(cfg)
+	if client.httpClient.Timeout != 0 {
+		t.Fatalf("http.Client.Timeout must be 0 with custom RoundTripper chain (Go 1.26+ synctest bug); got %v", client.httpClient.Timeout)
+	}
+
+	outer, ok := client.httpClient.Transport.(*acceptIdentityTransport)
+	if !ok {
+		t.Fatalf("expected *acceptIdentityTransport, got %T", client.httpClient.Transport)
+	}
+
+	if outer.base == nil {
+		t.Fatal("acceptIdentityTransport.base is nil")
+	}
+	if _, ok := outer.base.(*rateLimitedTransport); ok {
+		t.Fatal("MaxRequestsPerSecond=0 must not wrap rateLimitedTransport")
+	}
+}
+
+func TestNewClient_RateLimitWrappedUnderAcceptIdentityTransport(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{
+		Plex: config.PlexConfig{
+			URL:                    "http://test.plex.server:32400",
+			Token:                  "test_token",
+			LibrarySectionID:       1,
+			MatchConfidencePercent: config.DefaultMatchConfidencePercent,
+			MaxRequestsPerSecond:   50,
+		},
+	}
+
+	client := NewClient(cfg)
+	outer, ok := client.httpClient.Transport.(*acceptIdentityTransport)
+	if !ok {
+		t.Fatalf("expected *acceptIdentityTransport, got %T", client.httpClient.Transport)
+	}
+	lim, ok := outer.base.(*rateLimitedTransport)
+	if !ok {
+		t.Fatalf("expected rate limiter inside accept identity, got %T", outer.base)
+	}
+	if lim == nil || lim.base == nil {
+		t.Fatal("rateLimitedTransport not wired")
+	}
+}
+
 func TestCalculateStringSimilarity(t *testing.T) {
 	client := &Client{}
 
