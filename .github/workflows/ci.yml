@@ -432,7 +432,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.get-version.outputs.v_patch }}
           name: Release ${{ needs.get-version.outputs.v_patch }}
@@ -446,7 +446,7 @@ jobs:
         if: contains(github.event.pull_request.labels.*.name, 'patch')
 
       - name: Create minor release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.get-version.outputs.v_minor }}
           name: Release ${{ needs.get-version.outputs.v_minor }}
@@ -460,7 +460,7 @@ jobs:
         if: contains(github.event.pull_request.labels.*.name, 'minor')
 
       - name: Create major release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.get-version.outputs.v_major }}
           name: Release ${{ needs.get-version.outputs.v_major }}
