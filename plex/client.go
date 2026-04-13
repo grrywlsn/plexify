@@ -5,9 +5,11 @@ import (
 	"crypto/tls"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/LukeHagar/plexgo"
@@ -48,11 +50,14 @@ const (
 
 // Client wraps the Plex API client
 type Client struct {
-	baseURL               string
-	token                 string
-	sectionID             int
-	serverID              string
-	httpClient            *http.Client
+	baseURL    string
+	token      string
+	sectionID  int
+	serverID   string
+	httpClient *http.Client
+	// httpPipelineMu is held from the start of each outbound RoundTrip until the response body
+	// is closed (see pipelineLockTransport). Do not copy Client by value while using the client.
+	httpPipelineMu        sync.Mutex
 	debug                 bool
 	plexgoClient          *plexgo.PlexAPI
 	matchConcurrency      int
@@ -131,25 +136,42 @@ func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
 	// Client.Timeout would use setRequestCancel's legacy path (broken vs synctest on Go 1.26+).
 	httpClient := &http.Client{Timeout: 0}
 
-	var baseTransport http.RoundTripper = http.DefaultTransport
-	if skipTLSVerify {
-		if dt, ok := http.DefaultTransport.(*http.Transport); ok {
-			tr := dt.Clone()
+	// Always clone DefaultTransport for isolated dial/idle-pool settings. Parallel track matching
+	// plus rate limiting benefits from a higher per-host idle cap than the zero-value Transport
+	// (Colima/Docker NAT paths are more sensitive to connection churn than a typical desktop).
+	var baseTransport http.RoundTripper
+	if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		tr := dt.Clone()
+		if skipTLSVerify {
 			tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-			baseTransport = tr
-		} else {
-			baseTransport = &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			}
 		}
+		if tr.MaxIdleConnsPerHost < 32 {
+			tr.MaxIdleConnsPerHost = 32
+		}
+		if tr.MaxIdleConns < 64 {
+			tr.MaxIdleConns = 64
+		}
+		baseTransport = tr
+	} else if skipTLSVerify {
+		baseTransport = &http.Transport{
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+			MaxIdleConns:        64,
+			MaxIdleConnsPerHost: 32,
+		}
+	} else {
+		baseTransport = http.DefaultTransport
 	}
 
 	rps := cfg.Plex.MaxRequestsPerSecond
-	var rt http.RoundTripper = baseTransport
+	var inner http.RoundTripper = baseTransport
 	if rps > 0 {
-		rt = newRateLimitedTransport(baseTransport, rps)
+		inner = newRateLimitedTransport(baseTransport, rps)
 	}
-	httpClient.Transport = &acceptIdentityTransport{base: rt}
+
+	c := new(Client)
+	httpClient.Transport = &acceptIdentityTransport{
+		base: newPipelineLockTransport(&c.httpPipelineMu, inner),
+	}
 
 	plexgoClient := plexgo.New(
 		plexgo.WithSecurity(cfg.Plex.Token),
@@ -167,20 +189,19 @@ func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
 
 	mp := cfg.Plex.MatchConfidencePercent
 	mpCopy := mp
-	return &Client{
-		baseURL:                cfg.Plex.URL,
-		token:                  cfg.Plex.Token,
-		sectionID:              cfg.Plex.LibrarySectionID,
-		serverID:               cfg.Plex.ServerID,
-		httpClient:             httpClient,
-		debug:                  false,
-		plexgoClient:           plexgoClient,
-		matchConcurrency:       mc,
-		dryRun:                 cfg.Plex.DryRun,
-		skipFullLibrarySearch:  cfg.Plex.SkipFullLibrarySearch,
-		exactMatchesOnly:       cfg.Plex.ExactMatchesOnly,
-		matchConfidencePercent: &mpCopy,
-	}
+	c.baseURL = cfg.Plex.URL
+	c.token = cfg.Plex.Token
+	c.sectionID = cfg.Plex.LibrarySectionID
+	c.serverID = cfg.Plex.ServerID
+	c.httpClient = httpClient
+	c.debug = false
+	c.plexgoClient = plexgoClient
+	c.matchConcurrency = mc
+	c.dryRun = cfg.Plex.DryRun
+	c.skipFullLibrarySearch = cfg.Plex.SkipFullLibrarySearch
+	c.exactMatchesOnly = cfg.Plex.ExactMatchesOnly
+	c.matchConfidencePercent = &mpCopy
+	return c
 }
 
 func (c *Client) minMatchScore() float64 {
@@ -258,7 +279,8 @@ func (c *Client) GetServerInfo(ctx context.Context) (*PlexServerInfo, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
-		return nil, fmt.Errorf("plex server info API returned status %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		return nil, newPlexHTTPError(resp.StatusCode, "server info", b)
 	}
 
 	var serverInfo PlexServerInfo
@@ -271,16 +293,41 @@ func (c *Client) GetServerInfo(ctx context.Context) (*PlexServerInfo, error) {
 
 // GetServerID retrieves the server ID (machine identifier) from the Plex API
 func (c *Client) GetServerID(ctx context.Context) (string, error) {
-	serverInfo, err := c.GetServerInfo(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get server info: %w", err)
-	}
+	const maxAttempts = 4
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(250*(1<<(attempt-1))) * time.Millisecond
+			if delay > 3*time.Second {
+				delay = 3 * time.Second
+			}
+			select {
+			case <-ctx.Done():
+				return "", fmt.Errorf("failed to get server info: %w", ctx.Err())
+			case <-time.After(delay):
+			}
+		}
 
-	if serverInfo.MachineIdentifier == "" {
-		return "", fmt.Errorf("server info response does not contain machine identifier")
-	}
+		serverInfo, err := c.GetServerInfo(ctx)
+		if err != nil {
+			lastErr = err
+			if ctx.Err() != nil {
+				return "", fmt.Errorf("failed to get server info: %w", err)
+			}
+			if isTransientPlexErr(err) && attempt+1 < maxAttempts {
+				slog.WarnContext(ctx, "transient error fetching Plex server info; retrying",
+					"err", err, "attempt", attempt+1, "max", maxAttempts)
+				continue
+			}
+			return "", fmt.Errorf("failed to get server info: %w", err)
+		}
 
-	return serverInfo.MachineIdentifier, nil
+		if serverInfo.MachineIdentifier == "" {
+			return "", fmt.Errorf("server info response does not contain machine identifier")
+		}
+		return serverInfo.MachineIdentifier, nil
+	}
+	return "", fmt.Errorf("failed to get server info: %w", lastErr)
 }
 
 // SetServerID updates the server ID in the client
