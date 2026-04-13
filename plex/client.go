@@ -50,11 +50,11 @@ const (
 
 // Client wraps the Plex API client
 type Client struct {
-	baseURL               string
-	token                 string
-	sectionID             int
-	serverID              string
-	httpClient            *http.Client
+	baseURL    string
+	token      string
+	sectionID  int
+	serverID   string
+	httpClient *http.Client
 	// httpPipelineMu is held from the start of each outbound RoundTrip until the response body
 	// is closed (see pipelineLockTransport). Do not copy Client by value while using the client.
 	httpPipelineMu        sync.Mutex
@@ -154,9 +154,9 @@ func NewClientWithTLSConfig(cfg *config.Config, skipTLSVerify bool) *Client {
 		baseTransport = tr
 	} else if skipTLSVerify {
 		baseTransport = &http.Transport{
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
-			MaxIdleConns:          64,
-			MaxIdleConnsPerHost:   32,
+			TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+			MaxIdleConns:        64,
+			MaxIdleConnsPerHost: 32,
 		}
 	} else {
 		baseTransport = http.DefaultTransport

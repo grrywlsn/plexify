@@ -1,7 +1,7 @@
 # Plexify Makefile
 # Build and development tools for the Plexify application
 
-.PHONY: help build run test clean deps format vet lint setup build-release build-all-platforms
+.PHONY: help build run test clean deps format fmt vet lint setup build-release build-all-platforms
 
 # Default target
 .DEFAULT_GOAL := help
@@ -21,14 +21,15 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Examples:"
-	@echo "  make build          # Build the application"
+	@echo "  make build          # Format then build the application"
 	@echo "  make run            # Run the application"
 	@echo "  make test           # Run tests"
+	@echo "  make fmt            # Format code (alias for make format)"
 	@echo "  make setup          # Setup development environment"
 	@echo "  make build-release  # Build for all platforms"
 
 # Build targets
-build: ## Build the application for current platform
+build: format ## Build the application for current platform (runs format first)
 	@echo "Building $(BINARY_NAME)..."
 	go build $(LDFLAGS) -o $(BINARY_NAME) $(MAIN_FILE)
 	@echo "Build complete: ./$(BINARY_NAME)"
@@ -102,6 +103,8 @@ test-verbose: ## Run tests with verbose output
 format: ## Format the code
 	@echo "Formatting code..."
 	go fmt ./...
+
+fmt: format ## Alias for format (run: make fmt)
 
 vet: ## Vet the code
 	@echo "Vetting code..."
