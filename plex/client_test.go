@@ -74,7 +74,11 @@ func TestNewClient_HTTPClientUsesZeroTimeoutAndAcceptIdentityTransport(t *testin
 	if outer.base == nil {
 		t.Fatal("acceptIdentityTransport.base is nil")
 	}
-	if _, ok := outer.base.(*rateLimitedTransport); ok {
+	lock, ok := outer.base.(*pipelineLockTransport)
+	if !ok {
+		t.Fatalf("expected *pipelineLockTransport under accept identity, got %T", outer.base)
+	}
+	if _, ok := lock.base.(*rateLimitedTransport); ok {
 		t.Fatal("MaxRequestsPerSecond=0 must not wrap rateLimitedTransport")
 	}
 }
@@ -97,9 +101,13 @@ func TestNewClient_RateLimitWrappedUnderAcceptIdentityTransport(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *acceptIdentityTransport, got %T", client.httpClient.Transport)
 	}
-	lim, ok := outer.base.(*rateLimitedTransport)
+	lock, ok := outer.base.(*pipelineLockTransport)
 	if !ok {
-		t.Fatalf("expected rate limiter inside accept identity, got %T", outer.base)
+		t.Fatalf("expected *pipelineLockTransport inside accept identity, got %T", outer.base)
+	}
+	lim, ok := lock.base.(*rateLimitedTransport)
+	if !ok {
+		t.Fatalf("expected rate limiter inside pipeline lock, got %T", lock.base)
 	}
 	if lim.base == nil || lim.minGap <= 0 {
 		t.Fatalf("rateLimitedTransport not wired: base=%v minGap=%v", lim.base, lim.minGap)

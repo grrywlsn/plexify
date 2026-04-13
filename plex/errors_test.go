@@ -35,6 +35,11 @@ func TestIsTransientPlexErr(t *testing.T) {
 		{"econnrefused", syscall.ECONNREFUSED, true},
 		{"etimedout", syscall.ETIMEDOUT, true},
 		{"opaque", errors.New("plex search API returned status 401"), false},
+		{"http 401", &PlexHTTPError{StatusCode: 401, Op: "search"}, false},
+		{"http 503", &PlexHTTPError{StatusCode: 503, Op: "search"}, true},
+		{"http 502 wrapped", fmt.Errorf("wrap: %w", &PlexHTTPError{StatusCode: 502, Op: "x"}), true},
+		{"http 429", &PlexHTTPError{StatusCode: 429, Op: "rate"}, true},
+		{"http 408", &PlexHTTPError{StatusCode: 408, Op: "timeout"}, true},
 	}
 
 	for _, tt := range tests {

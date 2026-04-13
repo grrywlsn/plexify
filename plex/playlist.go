@@ -79,9 +79,8 @@ func (c *Client) CreatePlaylist(ctx context.Context, title, description, trackUR
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK && resp.StatusCode != StatusCreated {
-		// Read the response body to get more details about the error
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("plex playlist creation API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, newPlexHTTPError(resp.StatusCode, "create playlist", body)
 	}
 
 	// Parse the JSON response to get the created playlist
@@ -152,7 +151,7 @@ func (c *Client) GetPlaylists(ctx context.Context) ([]PlexPlaylist, error) {
 			return nil, fmt.Errorf("read playlists body: %w", readErr)
 		}
 		if resp.StatusCode != StatusOK {
-			return nil, fmt.Errorf("plex playlists API returned status %d: %s", resp.StatusCode, string(body))
+			return nil, newPlexHTTPError(resp.StatusCode, "list playlists", body)
 		}
 
 		var container plexPlaylistsListContainer
@@ -214,9 +213,8 @@ func (c *Client) UpdatePlaylistMetadata(ctx context.Context, playlistID, title, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK && resp.StatusCode != StatusCreated {
-		// Read the response body to get more details about the error
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("plex playlist update API returned status %d: %s", resp.StatusCode, string(body))
+		return newPlexHTTPError(resp.StatusCode, "update playlist", body)
 	}
 
 	slog.Info(fmt.Sprintf("Successfully updated playlist metadata: %s (ID: %s)", title, playlistID))
@@ -247,9 +245,8 @@ func (c *Client) ClearPlaylist(ctx context.Context, playlistID string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK && resp.StatusCode != StatusNoContent {
-		// Read the response body to get more details about the error
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("plex playlist clear API returned status %d: %s", resp.StatusCode, string(body))
+		return newPlexHTTPError(resp.StatusCode, "clear playlist", body)
 	}
 
 	slog.Info(fmt.Sprintf("Successfully cleared playlist: %s", playlistID))
@@ -294,7 +291,7 @@ func (c *Client) GetPlaylistItems(ctx context.Context, playlistID string) ([]Ple
 			return nil, fmt.Errorf("read playlist items body: %w", readErr)
 		}
 		if resp.StatusCode != StatusOK {
-			return nil, fmt.Errorf("playlist items API status %d: %s", resp.StatusCode, string(body))
+			return nil, newPlexHTTPError(resp.StatusCode, "playlist items", body)
 		}
 
 		var container plexPlaylistItemsContainer

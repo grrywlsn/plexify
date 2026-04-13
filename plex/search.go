@@ -3,6 +3,7 @@ package plex
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -247,7 +248,8 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
-		return nil, fmt.Errorf("plex search API returned status %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		return nil, newPlexHTTPError(resp.StatusCode, "search by title", b)
 	}
 
 	var searchResp PlexResponse
@@ -295,7 +297,8 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
-		return nil, fmt.Errorf("plex artist search API returned status %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		return nil, newPlexHTTPError(resp.StatusCode, "search by artist", b)
 	}
 
 	var searchResp PlexResponse
@@ -335,15 +338,20 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == StatusOK {
-		var searchResp PlexResponse
-		if err := decodePlexResponseXML(resp, &searchResp); err != nil {
-			slog.WarnContext(ctx, "combined Plex search returned OK but XML decode failed; trying other strategies",
-				"err", err, "query", query)
-		} else if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
-			slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.Artist))
-			return track, nil
-		}
+	if resp.StatusCode != StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, newPlexHTTPError(resp.StatusCode, "combined search", b)
+	}
+
+	var searchResp PlexResponse
+	if err := decodePlexResponseXML(resp, &searchResp); err != nil {
+		slog.WarnContext(ctx, "combined Plex search returned OK but XML decode failed; trying other strategies",
+			"err", err, "query", query)
+		return nil, nil
+	}
+	if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
+		slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.Artist))
+		return track, nil
 	}
 
 	return nil, nil
@@ -422,7 +430,8 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
-		return nil, fmt.Errorf("plex library API returned status %d", resp.StatusCode)
+		b, _ := io.ReadAll(resp.Body)
+		return nil, newPlexHTTPError(resp.StatusCode, "library all", b)
 	}
 
 	var libraryResp PlexResponse
