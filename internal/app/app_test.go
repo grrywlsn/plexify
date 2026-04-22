@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"github.com/grrywlsn/plexify/config"
@@ -36,7 +37,7 @@ func TestDisplayMissingTracksSummary(t *testing.T) {
 		},
 	}
 
-	app.displayMissingTracksSummary(missingTracks)
+	app.displayMissingTracksSummary(context.Background(), missingTracks)
 }
 
 func TestFilterExcludedPlaylists_NoExclusions(t *testing.T) {

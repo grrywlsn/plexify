@@ -33,6 +33,12 @@ func parseFlags() map[string]string {
 	flag.StringVar(&plexLibrarySectionID, "PLEX_LIBRARY_SECTION_ID", "", "Plex library section ID (overrides env var)")
 	flag.StringVar(&plexServerID, "PLEX_SERVER_ID", "", "Plex server ID (overrides env var)")
 
+	var lidarrURL, lidarrToken string
+	flag.StringVar(&lidarrURL, "LIDARR_URL", "", "Lidarr base URL for auto-adding missing MB release groups (overrides env; requires LIDARR_TOKEN)")
+	flag.StringVar(&lidarrToken, "LIDARR_TOKEN", "", "Lidarr API key (overrides env; requires LIDARR_URL)")
+	var lidarrInsecureSkipVerify bool
+	flag.BoolVar(&lidarrInsecureSkipVerify, "lidarr-insecure-skip-verify", false, "Skip TLS verify for Lidarr HTTPS (same as LIDARR_INSECURE_SKIP_VERIFY=true)")
+
 	var dryRun bool
 	flag.BoolVar(&dryRun, "dry-run", false, "Match and show diff only; do not modify Plex playlists (same as PLEXIFY_DRY_RUN=true)")
 
@@ -89,6 +95,15 @@ func parseFlags() map[string]string {
 	}
 	if plexServerID != "" {
 		overrides["PLEX_SERVER_ID"] = plexServerID
+	}
+	if lidarrURL != "" {
+		overrides["LIDARR_URL"] = lidarrURL
+	}
+	if lidarrToken != "" {
+		overrides["LIDARR_TOKEN"] = lidarrToken
+	}
+	if lidarrInsecureSkipVerify {
+		overrides["LIDARR_INSECURE_SKIP_VERIFY"] = "true"
 	}
 	if dryRun {
 		overrides["PLEXIFY_DRY_RUN"] = "true"

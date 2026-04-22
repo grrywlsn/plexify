@@ -358,3 +358,52 @@ func TestNormalizeMusicSocialBaseURL(t *testing.T) {
 		t.Error("expected error for non-http scheme")
 	}
 }
+
+func TestNormalizeLidarrBaseURL(t *testing.T) {
+	got, err := NormalizeLidarrBaseURL("http://10.0.0.1:8686/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "http://10.0.0.1:8686" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestLidarrValidationBothOrNeither(t *testing.T) {
+	cfg := &Config{
+		MusicSocial: MusicSocialConfig{BaseURL: "https://music.example.com", Username: "u"},
+		Plex: PlexConfig{
+			URL: "http://p:32400", Token: "t", LibrarySectionID: 1,
+		},
+	}
+	cfg.Lidarr.URL = "http://lidarr:8686"
+	cfg.Lidarr.Token = ""
+	if err := cfg.validate(); err == nil {
+		t.Fatal("expected error when only LIDARR URL set")
+	}
+
+	cfg.Lidarr.URL = ""
+	cfg.Lidarr.Token = "k"
+	if err := cfg.validate(); err == nil {
+		t.Fatal("expected error when only LIDARR token set")
+	}
+
+	cfg.Lidarr.URL = "http://lidarr:8686"
+	cfg.Lidarr.Token = "k"
+	if err := cfg.validate(); err != nil {
+		t.Fatalf("expected ok: %v", err)
+	}
+	if cfg.Lidarr.URL != "http://lidarr:8686" {
+		t.Errorf("url: %q", cfg.Lidarr.URL)
+	}
+}
+
+func TestLoadLidarrInsecureFromEnv(t *testing.T) {
+	t.Setenv("LIDARR_INSECURE_SKIP_VERIFY", "true")
+	cfg := &Config{}
+	cfg.initializeDefaults()
+	cfg.loadLidarrFromEnv()
+	if !cfg.Lidarr.InsecureSkipVerify {
+		t.Error("expected InsecureSkipVerify true")
+	}
+}
