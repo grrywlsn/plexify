@@ -14,6 +14,7 @@ import (
 type Config struct {
 	MusicSocial MusicSocialConfig
 	Plex        PlexConfig
+	Lidarr      LidarrConfig
 }
 
 // MusicSocialConfig holds HTTP API configuration for music-social.com (or a compatible host via MUSIC_SOCIAL_URL).
@@ -41,6 +42,18 @@ type PlexConfig struct {
 	MaxRequestsPerSecond float64
 	// MatchConfidencePercent is the minimum combined title/artist match score (0–100) required to accept a Plex track. Default 80 (PLEXIFY_MATCH_CONFIDENCE_PERCENT).
 	MatchConfidencePercent int
+}
+
+// LidarrConfig holds Lidarr API settings for auto-adding missing MusicBrainz release groups. Both URL and Token must be set to enable; see LidarrEnabled.
+type LidarrConfig struct {
+	URL                string
+	Token              string
+	InsecureSkipVerify bool // LIDARR_INSECURE_SKIP_VERIFY: skip TLS verify for HTTPS (e.g. self-signed)
+}
+
+// LidarrEnabled is true when Lidarr integration should run (both URL and non-empty API token are set).
+func (c *Config) LidarrEnabled() bool {
+	return strings.TrimSpace(c.Lidarr.URL) != "" && strings.TrimSpace(c.Lidarr.Token) != ""
 }
 
 // Load loads configuration following the specified order:
@@ -105,6 +118,12 @@ func (c *Config) initializeDefaults() {
 		MaxRequestsPerSecond:   4,
 		MatchConfidencePercent: DefaultMatchConfidencePercent,
 	}
+
+	c.Lidarr = LidarrConfig{
+		URL:                "",
+		Token:              "",
+		InsecureSkipVerify: false,
+	}
 }
 
 // DefaultMatchConfidencePercent is the default minimum match score (whole percent) when PLEXIFY_MATCH_CONFIDENCE_PERCENT is unset.
@@ -157,6 +176,19 @@ func (c *Config) loadFromOSEnv() {
 	if f, ok := parseFloatEnv("PLEX_MAX_REQUESTS_PER_SECOND"); ok {
 		c.Plex.MaxRequestsPerSecond = f
 	}
+	c.loadLidarrFromEnv()
+}
+
+func (c *Config) loadLidarrFromEnv() {
+	if value := os.Getenv("LIDARR_URL"); value != "" {
+		c.Lidarr.URL = value
+	}
+	if value := os.Getenv("LIDARR_TOKEN"); value != "" {
+		c.Lidarr.Token = value
+	}
+	if v, ok := os.LookupEnv("LIDARR_INSECURE_SKIP_VERIFY"); ok {
+		c.Lidarr.InsecureSkipVerify = isTruthy(v)
+	}
 }
 
 func (c *Config) loadFromEnvFile() {
@@ -207,6 +239,7 @@ func (c *Config) loadFromEnvFile() {
 	if f, ok := parseFloatEnv("PLEX_MAX_REQUESTS_PER_SECOND"); ok {
 		c.Plex.MaxRequestsPerSecond = f
 	}
+	c.loadLidarrFromEnv()
 }
 
 // loadPlexTLSFromEnv applies PLEX_INSECURE_SKIP_VERIFY and PLEX_VERIFY_TLS (VERIFY wins when truthy).
@@ -285,6 +318,15 @@ func parseLibrarySectionID(value string) (int, error) {
 
 // NormalizeMusicSocialBaseURL trims space and trailing slashes and validates as an absolute http(s) URL.
 func NormalizeMusicSocialBaseURL(raw string) (string, error) {
+	return normalizeHTTPBaseURL(raw)
+}
+
+// NormalizeLidarrBaseURL trims space and trailing slashes and validates LIDARR_URL (http or https with host).
+func NormalizeLidarrBaseURL(raw string) (string, error) {
+	return normalizeHTTPBaseURL(raw)
+}
+
+func normalizeHTTPBaseURL(raw string) (string, error) {
 	s := strings.TrimSpace(raw)
 	s = strings.TrimRight(s, "/")
 	if s == "" {
@@ -314,6 +356,20 @@ func (c *Config) validate() error {
 			return fmt.Errorf("invalid MUSIC_SOCIAL_URL: %w", err)
 		}
 		c.MusicSocial.BaseURL = base
+	}
+
+	lidarrURL := strings.TrimSpace(c.Lidarr.URL)
+	lidarrToken := strings.TrimSpace(c.Lidarr.Token)
+	if (lidarrURL != "" && lidarrToken == "") || (lidarrURL == "" && lidarrToken != "") {
+		return fmt.Errorf("LIDARR_URL and LIDARR_TOKEN must both be set to enable Lidarr integration, or both left unset")
+	}
+	if lidarrURL != "" {
+		norm, err := NormalizeLidarrBaseURL(lidarrURL)
+		if err != nil {
+			return fmt.Errorf("invalid LIDARR_URL: %w", err)
+		}
+		c.Lidarr.URL = norm
+		c.Lidarr.Token = lidarrToken
 	}
 
 	if c.Plex.URL == "" {
@@ -406,6 +462,12 @@ func (c *Config) applyOverrides(overrides map[string]string) {
 			if p, err := ParseMatchConfidencePercent(value); err == nil {
 				c.Plex.MatchConfidencePercent = p
 			}
+		case "LIDARR_URL":
+			c.Lidarr.URL = value
+		case "LIDARR_TOKEN":
+			c.Lidarr.Token = value
+		case "LIDARR_INSECURE_SKIP_VERIFY":
+			c.Lidarr.InsecureSkipVerify = isTruthy(value)
 		}
 	}
 	c.applyPlexTLSOverrides(overrides)

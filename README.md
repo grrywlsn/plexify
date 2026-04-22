@@ -170,6 +170,9 @@ Boolean variables treat `1`, `true`, `yes`, and `on` (case-insensitive) as true;
 | `PLEXIFY_FAST_SEARCH` | off | Skip full-library scan (`/library/sections/{id}/all`); use indexed `/search` only. |
 | `PLEX_SKIP_FULL_LIBRARY_SEARCH` | off | Alias for `PLEXIFY_FAST_SEARCH`. |
 | `PLEXIFY_EXACT_MATCHES_ONLY` | off | Only the first search strategy (raw title/artist); no normalizations and no full-library scan. |
+| `LIDARR_URL` | empty | **Optional.** Lidarr base URL (e.g. `http://host:8686` or `https://lidarr:8686`). If set, `LIDARR_TOKEN` is also required. Used to add missing tracks that have a MusicBrainz release group id. |
+| `LIDARR_TOKEN` | empty | **Optional.** Lidarr API key (`Settings` → `Security` → **API Key**). Required when `LIDARR_URL` is set. |
+| `LIDARR_INSECURE_SKIP_VERIFY` | off | If true, skip TLS certificate verification for Lidarr HTTPS (e.g. self-signed). Default is to **verify** certificates. |
 | `NO_COLOR` | _(unset)_ | If set to any non-empty value, playlist diff output disables ANSI color when stdout is a terminal. |
 
 Environment variables, a `.env` file, or flags (same names, e.g. `-MUSIC_SOCIAL_URL=...`) are all supported.
@@ -184,6 +187,8 @@ Environment variables, a `.env` file, or flags (same names, e.g. `-MUSIC_SOCIAL_
 - `-plex-fast-search` — same as `PLEXIFY_FAST_SEARCH=true` (no `/all` fallback)
 - `-exact-matches-only` — same as `PLEXIFY_EXACT_MATCHES_ONLY=true` (first search strategy only; no `/all`)
 - `-plex-max-rps=N` — overrides `PLEX_MAX_REQUESTS_PER_SECOND` (`0` = unlimited)
+- `-LIDARR_URL=...` / `-LIDARR_TOKEN=...` — optional; same as env (both required to enable Lidarr)
+- `-lidarr-insecure-skip-verify` — same as `LIDARR_INSECURE_SKIP_VERIFY=true`
 - `-version` — print version and exit
 
 ```bash
@@ -293,6 +298,8 @@ Tracks not found in Plex library (5 total):
 ```
 
 **Note:** The missing-tracks section lists ISRC when known. When the source API includes `musicbrainz.release_group_gid`, a **MusicBrainz release group** line links to that release group; otherwise, when only a recording MBID is present, **MusicBrainz ID** links to the recording. When there is **no** MBID but the API includes a **Spotify album** (`spotify.album_uri`) or **Apple Music album id** (`apple_music.album_id`), an **Add to MusicBrainz** line links to [Harmony](https://harmony.pulsewidth.org.uk/) in the same form as music-social’s admin (Spotify album preferred over Apple when both are present; Apple URLs use the `us` storefront).
+
+**Lidarr:** If you set both `LIDARR_URL` and `LIDARR_TOKEN`, Plexify will **deduplicate** by release group, then for each missing track that has a **MusicBrainz release group** id, ask Lidarr to add that release group (if it is not already in Lidarr) and start a **search for the release**. For new artists, Lidarr needs a root folder path and quality/metadata profile ids; Plexify fills these from your Lidarr instance (first **root folder** from Settings → Media Management, using that folder’s default profiles when set, otherwise the first quality and metadata profile). In `PLEXIFY_DRY_RUN` mode, Plexify only prints which release group ids it would send to Lidarr; it does not call the Lidarr API. Failures from Lidarr are logged; they do not stop the rest of the run.
 
 ## Matching Order and Rules
 

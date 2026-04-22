@@ -9,6 +9,7 @@ import (
 
 	"github.com/grrywlsn/plexify/config"
 	"github.com/grrywlsn/plexify/internal/cliutil"
+	"github.com/grrywlsn/plexify/lidarr"
 	"github.com/grrywlsn/plexify/musicsocial"
 	"github.com/grrywlsn/plexify/plex"
 	"github.com/grrywlsn/plexify/track"
@@ -33,6 +34,7 @@ type Application struct {
 	config      *config.Config
 	musicSocial *musicsocial.Client
 	plexClient  *plex.Client
+	lidarr      *lidarr.Client
 }
 
 // NewApplication creates a new application instance. debug enables verbose Plex search logging.
@@ -48,10 +50,20 @@ func NewApplication(cfg *config.Config, debug bool) (*Application, error) {
 		slog.Info("Plex track matching: exact-matches-only (raw title/artist strategy; no title normalizations or full-library scan)")
 	}
 
+	var lclient *lidarr.Client
+	if cfg.LidarrEnabled() {
+		c, err := lidarr.NewClient(&cfg.Lidarr)
+		if err != nil {
+			return nil, fmt.Errorf("lidarr client: %w", err)
+		}
+		lclient = c
+	}
+
 	return &Application{
 		config:      cfg,
 		musicSocial: ms,
 		plexClient:  plexClient,
+		lidarr:      lclient,
 	}, nil
 }
 
@@ -222,7 +234,7 @@ func (app *Application) processPlaylist(ctx context.Context, meta PlaylistMeta, 
 		return fmt.Errorf("failed to match songs to Plex: %w", err)
 	}
 
-	app.displayMatchingResults(matchResults, songs, playlist, diffView)
+	app.displayMatchingResults(ctx, matchResults, songs, playlist, diffView)
 
 	return nil
 }
@@ -239,7 +251,7 @@ func (app *Application) displaySongs(songs []track.Track) {
 	fmt.Printf("Successfully fetched %d songs from source playlist\n", len(songs))
 }
 
-func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {
+func (app *Application) displayMatchingResults(ctx context.Context, matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {
 	fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
 	fmt.Println("MATCHING RESULTS")
 	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
@@ -270,7 +282,7 @@ func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, 
 	app.displaySummary(songs, titleMatches, noMatches, playlist, diffView)
 
 	if len(missingTracks) > 0 {
-		app.displayMissingTracksSummary(missingTracks)
+		app.displayMissingTracksSummary(ctx, missingTracks)
 	}
 }
 
@@ -300,7 +312,7 @@ func (app *Application) displaySummary(songs []track.Track, titleMatches, noMatc
 	}
 }
 
-func (app *Application) displayMissingTracksSummary(missingTracks []plex.MatchResult) {
+func (app *Application) displayMissingTracksSummary(ctx context.Context, missingTracks []plex.MatchResult) {
 	fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
 	fmt.Println("MISSING TRACKS SUMMARY")
 	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
@@ -324,6 +336,58 @@ func (app *Application) displayMissingTracksSummary(missingTracks []plex.MatchRe
 		}
 		if i < len(missingTracks)-1 {
 			fmt.Println()
+		}
+	}
+
+	app.addMissingReleaseGroupsToLidarr(ctx, missingTracks)
+}
+
+func (app *Application) addMissingReleaseGroupsToLidarr(ctx context.Context, missing []plex.MatchResult) {
+	if app.lidarr == nil || !app.config.LidarrEnabled() {
+		return
+	}
+
+	seen := make(map[string]struct{})
+	var groupIDs []string
+	for _, m := range missing {
+		rg := strings.TrimSpace(m.SourceTrack.MusicBrainzReleaseGroupID)
+		if rg == "" {
+			continue
+		}
+		if _, ok := seen[rg]; ok {
+			continue
+		}
+		seen[rg] = struct{}{}
+		groupIDs = append(groupIDs, rg)
+	}
+	if len(groupIDs) == 0 {
+		return
+	}
+
+	if app.config.Plex.DryRun {
+		fmt.Println()
+		fmt.Println("Lidarr (dry-run): would request add for these MusicBrainz release group id(s):")
+		for _, id := range groupIDs {
+			fmt.Printf("  - %s\n", id)
+		}
+		return
+	}
+
+	fmt.Println()
+	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
+	fmt.Println("LIDARR: ADD MISSING RELEASE GROUPS")
+	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
+	for _, id := range groupIDs {
+		res, err := app.lidarr.AddReleaseGroupIfMissing(ctx, id)
+		if err != nil {
+			slog.Error("lidarr: add release group", "release_group", id, "err", err)
+			fmt.Printf("❌ Lidarr: could not add release group %s: %v\n", id, err)
+			continue
+		}
+		if res.AlreadyPresent {
+			fmt.Printf("ℹ️  Lidarr: release group %s already in library\n", id)
+		} else if res.Added {
+			fmt.Printf("✅ Lidarr: added release group %s (search for release started)\n", id)
 		}
 	}
 }
