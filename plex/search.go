@@ -95,7 +95,7 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 				return nil, err
 			}
 			if tr != nil {
-				slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", tr.Title, tr.Artist, strategy.name, phase.tierLabel()))
+				slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", tr.Title, tr.DisplayArtist(), strategy.name, phase.tierLabel()))
 				return tr, nil
 			}
 		}
@@ -120,7 +120,7 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 			}
 		}
 		if tr != nil {
-			slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.Artist))
+			slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.DisplayArtist()))
 			return tr, nil
 		}
 	}
@@ -261,12 +261,12 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 	slog.Info(fmt.Sprintf("🔍 searchByTitle: searching for '%s' by '%s', found %d results", title, artist, len(searchResp.Tracks)))
 	if len(searchResp.Tracks) > 0 && c.debug {
 		for i, track := range searchResp.Tracks {
-			c.debugLog("  Result %d: '%s' by '%s' (ID: %s)", i+1, track.Title, track.Artist, track.ID)
+			c.debugLog("  Result %d: '%s' by '%s' (ID: %s)", i+1, track.Title, track.DisplayArtist(), track.ID)
 		}
 	}
 	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
-		slog.Info(fmt.Sprintf("✅ searchByTitle: found match '%s' by '%s'", result.Title, result.Artist))
+		slog.Info(fmt.Sprintf("✅ searchByTitle: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
 	} else {
 		c.debugLog("❌ searchByTitle: no match found")
 	}
@@ -309,7 +309,7 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum 
 	// Find best match among search results
 	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
-		slog.Info(fmt.Sprintf("✅ searchByArtist: found match '%s' by '%s'", result.Title, result.Artist))
+		slog.Info(fmt.Sprintf("✅ searchByArtist: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
 	}
 	return result, nil
 }
@@ -350,7 +350,7 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 		return nil, nil
 	}
 	if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
-		slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.Artist))
+		slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.DisplayArtist()))
 		return track, nil
 	}
 
@@ -443,7 +443,7 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(libraryResp.Tracks))
 	result := c.FindBestMatch(libraryResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
-		slog.Info(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.Artist, title, artist))
+		slog.Info(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.DisplayArtist(), title, artist))
 	} else {
 		slog.Info(fmt.Sprintf("❌ searchEntireLibrary: no match found for search '%s' by '%s'", title, artist))
 	}
@@ -485,6 +485,77 @@ func (c *Client) bestAlbumSimilarity(sourceAlbum, plexAlbum string) float64 {
 	return best
 }
 
+// artistMatchSimilarity returns the best 0–1 match between a source artist string and one Plex artist field
+// (album or track), using the same normalizations as FindBestMatch.
+func (c *Client) artistMatchSimilarity(artist, plexArtist string) float64 {
+	artistLower := strings.ToLower(strings.TrimSpace(artist))
+	trackArtist := strings.ToLower(strings.TrimSpace(plexArtist))
+	if trackArtist == "" {
+		return 0
+	}
+	artistSimilarity := c.calculateStringSimilarity(artistLower, trackArtist)
+
+	punctuationArtistLower := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(artist)))
+	punctuationTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(plexArtist)))
+	if v := c.calculateStringSimilarity(punctuationArtistLower, punctuationTrackArtistLower); v > artistSimilarity {
+		artistSimilarity = v
+	}
+	accentArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(artist)))
+	accentTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(plexArtist)))
+	if v := c.calculateStringSimilarity(accentArtistLower, accentTrackArtistLower); v > artistSimilarity {
+		artistSimilarity = v
+	}
+	featuringArtistLower := strings.ToLower(strings.TrimSpace(c.removeFeaturing(artist)))
+	featuringTrackArtistLower := strings.ToLower(strings.TrimSpace(c.removeFeaturing(plexArtist)))
+	if v := c.calculateStringSimilarity(featuringArtistLower, featuringTrackArtistLower); v > artistSimilarity {
+		artistSimilarity = v
+	}
+	return artistSimilarity
+}
+
+// bestPlexTrackArtistSimilarity is the max artist similarity over grandparent (album) and originalTitle (track) when set.
+func (c *Client) bestPlexTrackArtistSimilarity(artist string, tr PlexTrack) float64 {
+	best := c.artistMatchSimilarity(artist, tr.Artist)
+	if s := strings.TrimSpace(tr.OriginalTitle); s != "" {
+		if v := c.artistMatchSimilarity(artist, s); v > best {
+			best = v
+		}
+	}
+	return best
+}
+
+// bestPlexTrackArtistSimilarityNormPunct matches FindBestMatchWithNormalizedPunctuation (normalized punctuation on both sides).
+func (c *Client) bestPlexTrackArtistSimilarityNormPunct(artist string, tr PlexTrack) float64 {
+	an := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(artist)))
+	sim := c.calculateStringSimilarity(an, strings.ToLower(strings.TrimSpace(c.normalizePunctuation(tr.Artist))))
+	if s := strings.TrimSpace(tr.OriginalTitle); s != "" {
+		if v := c.calculateStringSimilarity(an, strings.ToLower(strings.TrimSpace(c.normalizePunctuation(s)))); v > sim {
+			sim = v
+		}
+	}
+	return sim
+}
+
+// plexTrackNormPunctTitleArtistMatch returns true if normalized-punctuation title and artist match this track
+// (album artist and/or per-track originalTitle on the artist side).
+func (c *Client) plexTrackNormPunctTitleArtistMatch(tr PlexTrack, titleLower, artistLower string) bool {
+	nt := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(tr.Title)))
+	if titleLower != nt {
+		return false
+	}
+	na := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(tr.Artist)))
+	if artistLower == na {
+		return true
+	}
+	if s := strings.TrimSpace(tr.OriginalTitle); s != "" {
+		no := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(s)))
+		if artistLower == no {
+			return true
+		}
+	}
+	return false
+}
+
 // FindBestMatch finds the best matching track from search results. When sourceAlbum is non-empty,
 // album similarity is blended into the score so duplicate title/artist releases can be disambiguated.
 func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum string) *PlexTrack {
@@ -501,16 +572,14 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 
 	var exactMatches []PlexTrack
 	for _, tr := range tracks {
-		trackTitle := strings.ToLower(strings.TrimSpace(tr.Title))
-		trackArtist := strings.ToLower(strings.TrimSpace(tr.Artist))
-		if titleLower == trackTitle && artistLower == trackArtist {
+		if tr.exactTitleAndArtistMatch(titleLower, artistLower) {
 			exactMatches = append(exactMatches, tr)
 		}
 	}
 	switch len(exactMatches) {
 	case 1:
 		t := exactMatches[0]
-		c.debugLog("✅ FindBestMatch: single exact match '%s' by '%s'", t.Title, t.Artist)
+		c.debugLog("✅ FindBestMatch: single exact match '%s' by '%s'", t.Title, t.DisplayArtist())
 		return &t
 	case 0:
 		// fall through to similarity scoring
@@ -539,44 +608,14 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 
 	for _, track := range tracks {
 		trackTitle := strings.ToLower(strings.TrimSpace(track.Title))
-		trackArtist := strings.ToLower(strings.TrimSpace(track.Artist))
 
 		// Calculate similarity scores with original titles
 		titleSimilarity := c.calculateStringSimilarity(titleLower, trackTitle)
-		artistSimilarity := c.calculateStringSimilarity(artistLower, trackArtist)
+		artistSimilarity := c.bestPlexTrackArtistSimilarity(artist, track)
 
-		c.debugLog("🔍 FindBestMatch: '%s' by '%s' -> '%s' by '%s'", title, artist, track.Title, track.Artist)
+		c.debugLog("🔍 FindBestMatch: '%s' by '%s' -> '%s' by '%s'", title, artist, track.Title, track.DisplayArtist())
 		c.debugLog("   Original title similarity: %s ('%s' vs '%s')", formatConfidencePercent(titleSimilarity), titleLower, trackTitle)
-		c.debugLog("   Original artist similarity: %s ('%s' vs '%s')", formatConfidencePercent(artistSimilarity), artistLower, trackArtist)
-
-		// Also try with normalized punctuation for artist matching
-		punctuationArtistLower := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(artist)))
-		punctuationTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(track.Artist)))
-		punctuationArtistSimilarity := c.calculateStringSimilarity(punctuationArtistLower, punctuationTrackArtistLower)
-
-		// Also try with accent normalization for artist matching
-		accentArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(artist)))
-		accentTrackArtistLower := strings.ToLower(strings.TrimSpace(c.normalizeAccents(track.Artist)))
-		accentArtistSimilarity := c.calculateStringSimilarity(accentArtistLower, accentTrackArtistLower)
-
-		// Also try with featuring removed for artist matching
-		featuringArtistLower := strings.ToLower(strings.TrimSpace(c.removeFeaturing(artist)))
-		featuringTrackArtistLower := strings.ToLower(strings.TrimSpace(c.removeFeaturing(track.Artist)))
-		featuringArtistSimilarity := c.calculateStringSimilarity(featuringArtistLower, featuringTrackArtistLower)
-
-		// Use the better artist similarity
-		if punctuationArtistSimilarity > artistSimilarity {
-			c.debugLog("   Using normalized artist similarity: %s (was %s)", formatConfidencePercent(punctuationArtistSimilarity), formatConfidencePercent(artistSimilarity))
-			artistSimilarity = punctuationArtistSimilarity
-		}
-		if accentArtistSimilarity > artistSimilarity {
-			c.debugLog("   Using accent-normalized artist similarity: %s (was %s)", formatConfidencePercent(accentArtistSimilarity), formatConfidencePercent(artistSimilarity))
-			artistSimilarity = accentArtistSimilarity
-		}
-		if featuringArtistSimilarity > artistSimilarity {
-			c.debugLog("   Using featuring-removed artist similarity: %s (was %s)", formatConfidencePercent(featuringArtistSimilarity), formatConfidencePercent(artistSimilarity))
-			artistSimilarity = featuringArtistSimilarity
-		}
+		c.debugLog("   Best artist similarity (album + track fields): %s", formatConfidencePercent(artistSimilarity))
 
 		// Also try with cleaned titles (without brackets) for better matching
 		cleanTitleLower := strings.ToLower(strings.TrimSpace(c.removeBrackets(title)))
@@ -704,12 +743,12 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 			// Check if this is a "Various Artists" compilation album case
 			if strings.ToLower(strings.TrimSpace(track.Artist)) == "various artists" {
 				c.debugLog("🎵 FindBestMatch: allowing 'Various Artists' compilation match '%s' by '%s' (title: %s > 90%%, artist: %s < 30%% but is Various Artists)",
-					track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
 				// Don't skip this match - it's a valid compilation album case
 			} else {
 				// Skip this match - title is very similar but artist is too different
 				c.debugLog("🚫 FindBestMatch: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
-					track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
 				continue
 			}
 		}
@@ -720,12 +759,12 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 			// Check if this is a "Various Artists" compilation album case
 			if strings.ToLower(strings.TrimSpace(track.Artist)) == "various artists" {
 				c.debugLog("🎵 FindBestMatch: allowing 'Various Artists' compilation match '%s' by '%s' (title: %s > 70%%, artist: %s < 20%% but is Various Artists)",
-					track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
 				// Don't skip this match - it's a valid compilation album case
 			} else {
 				// Skip this match - title is similar but artist is too different
 				c.debugLog("🚫 FindBestMatch: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
-					track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
 				continue
 			}
 		}
@@ -758,18 +797,18 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 			bestAlbumSimilarity = albumSimilarity
 			if prevBest == nil || score > oldScore+scoreEqEps {
 				c.debugLog("📈 FindBestMatch: new best match '%s' by '%s' (score: %s > %s, title: %s, artist: %s)",
-					track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(oldScore), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
+					track.Title, track.DisplayArtist(), formatConfidencePercent(score), formatConfidencePercent(oldScore), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity))
 			} else {
-				c.debugLog("🎯 FindBestMatch: tie-breaker '%s' by '%s' (score: %s)", track.Title, track.Artist, formatConfidencePercent(score))
+				c.debugLog("🎯 FindBestMatch: tie-breaker '%s' by '%s' (score: %s)", track.Title, track.DisplayArtist(), formatConfidencePercent(score))
 			}
 		} else {
 			c.debugLog("⏭️  FindBestMatch: skipping '%s' by '%s' (score: %s, current best: %s)",
-				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(bestScore))
+				track.Title, track.DisplayArtist(), formatConfidencePercent(score), formatConfidencePercent(bestScore))
 		}
 
 		// Perfect title+artist: return immediately only when album is not used for disambiguation.
 		if !useAlbumInScore && titleSimilarity == 1.0 && artistSimilarity == 1.0 {
-			c.debugLog("🎯 FindBestMatch: perfect match found '%s' by '%s'", track.Title, track.Artist)
+			c.debugLog("🎯 FindBestMatch: perfect match found '%s' by '%s'", track.Title, track.DisplayArtist())
 			trackCopy := track
 			return &trackCopy
 		}
@@ -779,7 +818,7 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 	minScore := c.minMatchScore()
 	if bestScore >= minScore {
 		slog.Info(fmt.Sprintf("✅ FindBestMatch: FINAL RESULT - returning match '%s' by '%s' (score: %s >= %s) for search '%s' by '%s'",
-			bestMatch.Title, bestMatch.Artist, formatConfidencePercent(bestScore), formatConfidencePercent(minScore), title, artist))
+			bestMatch.Title, bestMatch.DisplayArtist(), formatConfidencePercent(bestScore), formatConfidencePercent(minScore), title, artist))
 		return bestMatch
 	}
 
@@ -806,18 +845,14 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 
 	var exactMatches []PlexTrack
 	for _, tr := range tracks {
-		normalizedTrackTitle := c.normalizePunctuation(tr.Title)
-		normalizedTrackArtist := c.normalizePunctuation(tr.Artist)
-		trackTitle := strings.ToLower(strings.TrimSpace(normalizedTrackTitle))
-		trackArtist := strings.ToLower(strings.TrimSpace(normalizedTrackArtist))
-		if titleLower == trackTitle && artistLower == trackArtist {
+		if c.plexTrackNormPunctTitleArtistMatch(tr, titleLower, artistLower) {
 			exactMatches = append(exactMatches, tr)
 		}
 	}
 	switch len(exactMatches) {
 	case 1:
 		t := exactMatches[0]
-		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: single exact match '%s' by '%s'", t.Title, t.Artist))
+		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: single exact match '%s' by '%s'", t.Title, t.DisplayArtist()))
 		return &t
 	case 0:
 	default:
@@ -844,13 +879,10 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 
 	for _, track := range tracks {
 		normalizedTrackTitle := c.normalizePunctuation(track.Title)
-		normalizedTrackArtist := c.normalizePunctuation(track.Artist)
-
 		trackTitle := strings.ToLower(strings.TrimSpace(normalizedTrackTitle))
-		trackArtist := strings.ToLower(strings.TrimSpace(normalizedTrackArtist))
 
 		titleSimilarity := c.calculateStringSimilarity(titleLower, trackTitle)
-		artistSimilarity := c.calculateStringSimilarity(artistLower, trackArtist)
+		artistSimilarity := c.bestPlexTrackArtistSimilarityNormPunct(artist, track)
 
 		albumSimilarity := 0.0
 		if useAlbumInScore {
@@ -865,15 +897,23 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 		}
 
 		if titleSimilarity > 0.9 && artistSimilarity < 0.3 {
-			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
-				track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
-			continue
+			if strings.ToLower(strings.TrimSpace(track.Artist)) == "various artists" {
+				// Match FindBestMatch: allow VA compilations
+			} else {
+				slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
+					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
+				continue
+			}
 		}
 
 		if titleSimilarity > 0.7 && artistSimilarity < 0.2 {
-			slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
-				track.Title, track.Artist, formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
-			continue
+			if strings.ToLower(strings.TrimSpace(track.Artist)) == "various artists" {
+				// allow VA
+			} else {
+				slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
+					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
+				continue
+			}
 		}
 
 		pick := false
@@ -901,11 +941,11 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 			bestArtistSimilarity = artistSimilarity
 			bestAlbumSimilarity = albumSimilarity
 			slog.Info(fmt.Sprintf("📈 FindBestMatchWithNormalizedPunctuation: new best match '%s' by '%s' (score: %s, title: %s, artist: %s)",
-				track.Title, track.Artist, formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
+				track.Title, track.DisplayArtist(), formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 		}
 
 		if !useAlbumInScore && titleSimilarity == 1.0 && artistSimilarity == 1.0 {
-			slog.Info(fmt.Sprintf("🎯 FindBestMatchWithNormalizedPunctuation: perfect match found '%s' by '%s'", track.Title, track.Artist))
+			slog.Info(fmt.Sprintf("🎯 FindBestMatchWithNormalizedPunctuation: perfect match found '%s' by '%s'", track.Title, track.DisplayArtist()))
 			trackCopy := track
 			return &trackCopy
 		}
@@ -914,7 +954,7 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 	minScore := c.minMatchScore()
 	if bestScore >= minScore {
 		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: returning match '%s' by '%s' (score: %s >= %s)",
-			bestMatch.Title, bestMatch.Artist, formatConfidencePercent(bestScore), formatConfidencePercent(minScore)))
+			bestMatch.Title, bestMatch.DisplayArtist(), formatConfidencePercent(bestScore), formatConfidencePercent(minScore)))
 		return bestMatch
 	}
 
