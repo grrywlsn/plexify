@@ -37,6 +37,34 @@ func TestDecodePlexResponseXML_ValidSearchPayload(t *testing.T) {
 	}
 }
 
+func TestDecodePlexResponseXML_TrackWithOriginalTitle(t *testing.T) {
+	t.Parallel()
+
+	const doc = `<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+		`<MediaContainer size="1">` +
+		`<Track ratingKey="99" title="High" grandparentTitle="Various Artists" originalTitle="Whethan" parentTitle="Fifty Shades"/>` +
+		`</MediaContainer>`
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(doc)),
+	}
+	var got PlexResponse
+	if err := decodePlexResponseXML(resp, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Tracks) != 1 {
+		t.Fatalf("tracks: got %d, want 1", len(got.Tracks))
+	}
+	tr := got.Tracks[0]
+	if tr.Title != "High" || tr.Artist != "Various Artists" || tr.OriginalTitle != "Whethan" || tr.Album != "Fifty Shades" {
+		t.Fatalf("unexpected decode: %#v", tr)
+	}
+	if tr.DisplayArtist() != "Whethan" {
+		t.Fatalf("DisplayArtist: got %q", tr.DisplayArtist())
+	}
+}
+
 func TestDecodePlexResponseXML_ValidServerInfo(t *testing.T) {
 	t.Parallel()
 

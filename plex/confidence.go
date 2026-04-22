@@ -36,6 +36,44 @@ func intAbs(x int) int {
 	return x
 }
 
+// artistSimilarityTitleArtistForPlexField mirrors the song↔Plex artist comparisons in MatchTypeTitleArtist for one Plex artist string (album or track).
+func (c *Client) artistSimilarityTitleArtistForPlexField(song track.Track, plexField string) float64 {
+	plexLower := strings.ToLower(plexField)
+	artistSimilarity := c.calculateStringSimilarity(strings.ToLower(track.PrimaryListedArtist(song.Artist)), plexLower)
+	if full := strings.ToLower(strings.TrimSpace(song.Artist)); full != "" {
+		if sim := c.calculateStringSimilarity(full, plexLower); sim > artistSimilarity {
+			artistSimilarity = sim
+		}
+	}
+	if v := c.calculateStringSimilarity(
+		strings.ToLower(c.removeFeaturing(song.Artist)),
+		strings.ToLower(c.removeFeaturing(plexField)),
+	); v > artistSimilarity {
+		artistSimilarity = v
+	}
+	if v := c.calculateStringSimilarity(
+		strings.ToLower(c.removeFeaturing(track.PrimaryListedArtist(song.Artist))),
+		strings.ToLower(c.removeFeaturing(plexField)),
+	); v > artistSimilarity {
+		artistSimilarity = v
+	}
+	return artistSimilarity
+}
+
+// bestArtistSimilarityTitleArtist returns the best 0–1 match over grandparent and originalTitle.
+func (c *Client) bestArtistSimilarityTitleArtist(song track.Track, plex *PlexTrack) float64 {
+	var best float64
+	if s := strings.TrimSpace(plex.Artist); s != "" {
+		best = c.artistSimilarityTitleArtistForPlexField(song, s)
+	}
+	if s := strings.TrimSpace(plex.OriginalTitle); s != "" {
+		if v := c.artistSimilarityTitleArtistForPlexField(song, s); v > best {
+			best = v
+		}
+	}
+	return best
+}
+
 // calculateConfidence calculates a confidence score for the match
 func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, matchType MatchKind) float64 {
 	if plexTrack == nil {
@@ -45,13 +83,7 @@ func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, mat
 	switch matchType {
 	case MatchTypeTitleArtist:
 		titleSimilarity := c.calculateStringSimilarity(strings.ToLower(song.Name), strings.ToLower(plexTrack.Title))
-		plexArtistLower := strings.ToLower(plexTrack.Artist)
-		artistSimilarity := c.calculateStringSimilarity(strings.ToLower(track.PrimaryListedArtist(song.Artist)), plexArtistLower)
-		if full := strings.ToLower(strings.TrimSpace(song.Artist)); full != "" {
-			if sim := c.calculateStringSimilarity(full, plexArtistLower); sim > artistSimilarity {
-				artistSimilarity = sim
-			}
-		}
+		artistSimilarity := c.bestArtistSimilarityTitleArtist(song, plexTrack)
 
 		titleVariantPairs := []struct{ a, b string }{
 			{strings.ToLower(c.removeBrackets(song.Name)), strings.ToLower(c.removeBrackets(plexTrack.Title))},
@@ -66,21 +98,6 @@ func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, mat
 			if sim > titleSimilarity {
 				titleSimilarity = sim
 			}
-		}
-
-		featuringArtistSimilarity := c.calculateStringSimilarity(
-			strings.ToLower(c.removeFeaturing(song.Artist)),
-			strings.ToLower(c.removeFeaturing(plexTrack.Artist)),
-		)
-		if featuringArtistSimilarity > artistSimilarity {
-			artistSimilarity = featuringArtistSimilarity
-		}
-		featuringPrimarySimilarity := c.calculateStringSimilarity(
-			strings.ToLower(c.removeFeaturing(track.PrimaryListedArtist(song.Artist))),
-			strings.ToLower(c.removeFeaturing(plexTrack.Artist)),
-		)
-		if featuringPrimarySimilarity > artistSimilarity {
-			artistSimilarity = featuringPrimarySimilarity
 		}
 
 		// Blend album only when both sides have album metadata (avoid punishing missing Plex parentTitle).

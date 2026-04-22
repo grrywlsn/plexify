@@ -262,7 +262,7 @@ func (app *Application) displayMatchingResults(matchResults []plex.MatchResult, 
 
 		fmt.Printf("%3d. %s - %s: %s", i+1, result.SourceTrack.Artist, result.SourceTrack.Name, status)
 		if result.PlexTrack != nil {
-			fmt.Printf(" (Plex: %s - %s)", result.PlexTrack.Artist, result.PlexTrack.Title)
+			fmt.Printf(" (Plex: %s - %s)", result.PlexTrack.DisplayArtist(), result.PlexTrack.Title)
 		}
 		fmt.Println()
 	}

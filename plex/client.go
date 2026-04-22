@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -68,16 +69,42 @@ type Client struct {
 	matchConfidencePercent *int
 }
 
-// PlexTrack represents a track from Plex
+// PlexTrack represents a track from Plex search and library API responses.
+// Artist is grandparentTitle (the album / library-hierarchy artist; often "Various Artists" on compilations).
+// OriginalTitle, when set, is the per-track artist (performer) — see Plex music Track attributes.
 type PlexTrack struct {
-	ID        string `xml:"ratingKey,attr"`
-	Title     string `xml:"title,attr"`
-	Artist    string `xml:"grandparentTitle,attr"`
-	Album     string `xml:"parentTitle,attr"`
-	Duration  int    `xml:"duration,attr"`
-	AddedAt   string `xml:"addedAt,attr"`
-	UpdatedAt string `xml:"updatedAt,attr"`
-	File      string `xml:"file,attr"`
+	ID            string `xml:"ratingKey,attr"`
+	Title         string `xml:"title,attr"`
+	Artist        string `xml:"grandparentTitle,attr"`
+	OriginalTitle string `xml:"originalTitle,attr"`
+	Album         string `xml:"parentTitle,attr"`
+	Duration      int    `xml:"duration,attr"`
+	AddedAt       string `xml:"addedAt,attr"`
+	UpdatedAt     string `xml:"updatedAt,attr"`
+	File          string `xml:"file,attr"`
+}
+
+// DisplayArtist returns a label for user-facing output: the track artist when set, else the album artist.
+func (t PlexTrack) DisplayArtist() string {
+	if s := strings.TrimSpace(t.OriginalTitle); s != "" {
+		return s
+	}
+	return t.Artist
+}
+
+// exactTitleAndArtistMatch reports whether titleLower and source artist (already lowercased) match this
+// track’s title and either the album artist (Artist) or the per-track originalTitle.
+func (t PlexTrack) exactTitleAndArtistMatch(titleLower, sourceArtistLower string) bool {
+	if titleLower != strings.ToLower(strings.TrimSpace(t.Title)) {
+		return false
+	}
+	if sourceArtistLower == strings.ToLower(strings.TrimSpace(t.Artist)) {
+		return true
+	}
+	if s := strings.TrimSpace(t.OriginalTitle); s != "" && sourceArtistLower == strings.ToLower(s) {
+		return true
+	}
+	return false
 }
 
 // PlexPlaylist represents a Plex playlist
