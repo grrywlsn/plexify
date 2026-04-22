@@ -118,6 +118,47 @@ func TestFprintPlaylistDiff_noColor(t *testing.T) {
 	}
 }
 
+func TestPlexArtistForPlaylistDiffLine_variousArtists(t *testing.T) {
+	t.Parallel()
+	src := track.Track{Artist: "Khalid", Name: "Love Lies"}
+	tr := &PlexTrack{Artist: "Various Artists", OriginalTitle: "Khalid", Title: "Love Lies"}
+	if got := plexArtistForPlaylistDiffLine(src, tr); got != "Khalid" {
+		t.Fatalf("expected per-track label when it matches source best, got %q", got)
+	}
+}
+
+func TestPlexArtistForPlaylistDiffLine_albumArtistWhenStronger(t *testing.T) {
+	t.Parallel()
+	src := track.Track{Artist: "ABBA", Name: "Dancing Queen"}
+	tr := &PlexTrack{Artist: "ABBA", OriginalTitle: "Guest", Title: "Dancing Queen"}
+	if got := plexArtistForPlaylistDiffLine(src, tr); got != "ABBA" {
+		t.Fatalf("expected album artist when it matches better, got %q", got)
+	}
+}
+
+func TestFprintPlaylistDiff_plexLineUsesBestArtistField(t *testing.T) {
+	var b strings.Builder
+	desired := []PlaylistDesiredEntry{
+		{
+			MatchResult: MatchResult{
+				SourceTrack: track.Track{Artist: "Khalid", Name: "Love Lies"},
+				PlexTrack:   &PlexTrack{ID: "1", Artist: "Various Artists", OriginalTitle: "Khalid", Title: "Love Lies"},
+				MatchType:   MatchTypeTitleArtist,
+				Confidence:  0.93,
+			},
+		},
+	}
+	view := NewPlaylistDiffView("Test", nil, desired)
+	FprintPlaylistDiff(&b, view, false)
+	out := b.String()
+	if strings.Contains(out, "Various Artists - Love Lies") {
+		t.Fatalf("expected plex line to prefer matching track artist, got: %s", out)
+	}
+	if !strings.Contains(out, "Khalid - Love Lies") {
+		t.Fatalf("expected Khalid on plex line, got: %s", out)
+	}
+}
+
 func TestFormatConfidencePercent(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
