@@ -291,10 +291,11 @@ func (c *Client) normalizeTitle(s string) string {
 
 // normalizePunctuation normalizes various punctuation marks to standard forms
 func (c *Client) normalizePunctuation(s string) string {
-	// Normalize various types of dashes to standard hyphens
-	s = strings.ReplaceAll(s, "\u2010", "-") // En dash to hyphen
-	s = strings.ReplaceAll(s, "\u2014", "-") // Em dash to hyphen
-	s = strings.ReplaceAll(s, "\u2015", "-") // Horizontal bar to hyphen
+	// Normalize various types of dashes to standard ASCII hyphen-minus
+	s = strings.ReplaceAll(s, "\u2010", "-") // Unicode hyphen
+	s = strings.ReplaceAll(s, "\u2013", "-") // En dash
+	s = strings.ReplaceAll(s, "\u2014", "-") // Em dash
+	s = strings.ReplaceAll(s, "\u2015", "-") // Horizontal bar
 
 	// Normalize multiplication symbol to 'x' for artist names like "Chloe × Halle"
 	s = strings.ReplaceAll(s, "\u00D7", "x") // Multiplication symbol to 'x'
