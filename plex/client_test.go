@@ -2731,7 +2731,8 @@ func TestPunctuationMatching(t *testing.T) {
 			{"Don't Stop", "Don't Stop", "Contraction apostrophe"},
 			{"O'Connor", "O'Connor", "Name with apostrophe"},
 			{"Mary-Jane", "Mary-Jane", "Name with hyphen"},
-			{"Mary‐Jane", "Mary-Jane", "Name with en dash"},
+			{"Mary‐Jane", "Mary-Jane", "Name with Unicode hyphen (U+2010)"},
+			{"9\u20135", "9-5", "En dash (U+2013) in track title vs ASCII hyphen"},
 			{"Chloe x Halle", "Chloe x Halle", "Regular 'x'"},
 			{"Chloe × Halle", "Chloe x Halle", "Multiplication symbol to 'x'"},
 		}

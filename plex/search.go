@@ -133,6 +133,16 @@ func (c *Client) indexedTrackSearchStrategies() []trackSearchStrategy {
 		{"exact title/artist", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			return c.trySearchVariationsPhase(ctx, title, artist, sourceAlbum, phase)
 		}},
+		// Indexed Plex /search is literal: en dash vs hyphen in the query string changes hits. Re-run
+		// with the same normalizations as FindBestMatch (e.g. U+2013 → -) so "9–5" finds "9-5".
+		{"punctuation normalized", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
+			pt := c.normalizePunctuation(title)
+			pa := c.normalizePunctuation(artist)
+			if pt == title && pa == artist {
+				return nil, nil
+			}
+			return c.trySearchVariationsPhase(ctx, pt, pa, sourceAlbum, phase)
+		}},
 		{"single quote variations", func(ctx context.Context, phase searchPhase, title, artist, sourceAlbum string) (*PlexTrack, error) {
 			if strings.Contains(title, "'") || strings.Contains(artist, "'") ||
 				strings.Contains(title, "'") || strings.Contains(artist, "'") {
