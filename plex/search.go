@@ -95,7 +95,7 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 				return nil, err
 			}
 			if tr != nil {
-				slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", tr.Title, tr.DisplayArtist(), strategy.name, phase.tierLabel()))
+				slog.Debug(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", tr.Title, tr.DisplayArtist(), strategy.name, phase.tierLabel()))
 				return tr, nil
 			}
 		}
@@ -120,7 +120,7 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 			}
 		}
 		if tr != nil {
-			slog.Info(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.DisplayArtist()))
+			slog.Debug(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.DisplayArtist()))
 			return tr, nil
 		}
 	}
@@ -268,7 +268,7 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 	}
 
 	// Find best match among search results
-	slog.Info(fmt.Sprintf("🔍 searchByTitle: searching for '%s' by '%s', found %d results", title, artist, len(searchResp.Tracks)))
+	slog.Debug(fmt.Sprintf("🔍 searchByTitle: searching for '%s' by '%s', found %d results", title, artist, len(searchResp.Tracks)))
 	if len(searchResp.Tracks) > 0 && c.debug {
 		for i, track := range searchResp.Tracks {
 			c.debugLog("  Result %d: '%s' by '%s' (ID: %s)", i+1, track.Title, track.DisplayArtist(), track.ID)
@@ -276,7 +276,7 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 	}
 	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
-		slog.Info(fmt.Sprintf("✅ searchByTitle: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
+		slog.Debug(fmt.Sprintf("✅ searchByTitle: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
 	} else {
 		c.debugLog("❌ searchByTitle: no match found")
 	}
@@ -319,7 +319,7 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum 
 	// Find best match among search results
 	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
-		slog.Info(fmt.Sprintf("✅ searchByArtist: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
+		slog.Debug(fmt.Sprintf("✅ searchByArtist: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
 	}
 	return result, nil
 }
@@ -360,7 +360,7 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 		return nil, nil
 	}
 	if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
-		slog.Info(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.DisplayArtist()))
+		slog.Debug(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.DisplayArtist()))
 		return track, nil
 	}
 
@@ -453,9 +453,9 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(libraryResp.Tracks))
 	result := c.FindBestMatch(libraryResp.Tracks, title, artist, sourceAlbum)
 	if result != nil {
-		slog.Info(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.DisplayArtist(), title, artist))
+		slog.Debug(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.DisplayArtist(), title, artist))
 	} else {
-		slog.Info(fmt.Sprintf("❌ searchEntireLibrary: no match found for search '%s' by '%s'", title, artist))
+		slog.Debug(fmt.Sprintf("❌ searchEntireLibrary: no match found for search '%s' by '%s'", title, artist))
 	}
 	return result, nil
 }
@@ -827,7 +827,7 @@ func (c *Client) FindBestMatch(tracks []PlexTrack, title, artist, sourceAlbum st
 	// Only return a match if the score is above a threshold
 	minScore := c.minMatchScore()
 	if bestScore >= minScore {
-		slog.Info(fmt.Sprintf("✅ FindBestMatch: FINAL RESULT - returning match '%s' by '%s' (score: %s >= %s) for search '%s' by '%s'",
+		slog.Debug(fmt.Sprintf("✅ FindBestMatch: FINAL RESULT - returning match '%s' by '%s' (score: %s >= %s) for search '%s' by '%s'",
 			bestMatch.Title, bestMatch.DisplayArtist(), formatConfidencePercent(bestScore), formatConfidencePercent(minScore), title, artist))
 		return bestMatch
 	}
@@ -851,7 +851,7 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 	sourceAlbumTrim := strings.TrimSpace(sourceAlbum)
 	useAlbumInScore := sourceAlbumTrim != ""
 
-	slog.Info(fmt.Sprintf("🔍 FindBestMatchWithNormalizedPunctuation: searching for '%s' by '%s' among %d tracks", normalizedTitle, normalizedArtist, len(tracks)))
+	slog.Debug(fmt.Sprintf("🔍 FindBestMatchWithNormalizedPunctuation: searching for '%s' by '%s' among %d tracks", normalizedTitle, normalizedArtist, len(tracks)))
 
 	var exactMatches []PlexTrack
 	for _, tr := range tracks {
@@ -862,7 +862,7 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 	switch len(exactMatches) {
 	case 1:
 		t := exactMatches[0]
-		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: single exact match '%s' by '%s'", t.Title, t.DisplayArtist()))
+		slog.Debug(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: single exact match '%s' by '%s'", t.Title, t.DisplayArtist()))
 		return &t
 	case 0:
 	default:
@@ -877,7 +877,7 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 				}
 			}
 			t := best
-			slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: multiple exact; picked by album (similarity %s)", formatConfidencePercent(bestAl)))
+			slog.Debug(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: multiple exact; picked by album (similarity %s)", formatConfidencePercent(bestAl)))
 			return &t
 		}
 	}
@@ -910,7 +910,7 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 			if strings.ToLower(strings.TrimSpace(track.Artist)) == "various artists" {
 				// Match FindBestMatch: allow VA compilations
 			} else {
-				slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
+				slog.Debug(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 90%%, artist: %s < 30%%)",
 					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 				continue
 			}
@@ -920,7 +920,7 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 			if strings.ToLower(strings.TrimSpace(track.Artist)) == "various artists" {
 				// allow VA
 			} else {
-				slog.Info(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
+				slog.Debug(fmt.Sprintf("🚫 FindBestMatchWithNormalizedPunctuation: rejecting '%s' by '%s' (title: %s > 70%%, artist: %s < 20%%)",
 					track.Title, track.DisplayArtist(), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 				continue
 			}
@@ -950,12 +950,12 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 			bestMatch = &trackCopy
 			bestArtistSimilarity = artistSimilarity
 			bestAlbumSimilarity = albumSimilarity
-			slog.Info(fmt.Sprintf("📈 FindBestMatchWithNormalizedPunctuation: new best match '%s' by '%s' (score: %s, title: %s, artist: %s)",
+			slog.Debug(fmt.Sprintf("📈 FindBestMatchWithNormalizedPunctuation: new best match '%s' by '%s' (score: %s, title: %s, artist: %s)",
 				track.Title, track.DisplayArtist(), formatConfidencePercent(score), formatConfidencePercent(titleSimilarity), formatConfidencePercent(artistSimilarity)))
 		}
 
 		if !useAlbumInScore && titleSimilarity == 1.0 && artistSimilarity == 1.0 {
-			slog.Info(fmt.Sprintf("🎯 FindBestMatchWithNormalizedPunctuation: perfect match found '%s' by '%s'", track.Title, track.DisplayArtist()))
+			slog.Debug(fmt.Sprintf("🎯 FindBestMatchWithNormalizedPunctuation: perfect match found '%s' by '%s'", track.Title, track.DisplayArtist()))
 			trackCopy := track
 			return &trackCopy
 		}
@@ -963,11 +963,11 @@ func (c *Client) FindBestMatchWithNormalizedPunctuation(tracks []PlexTrack, titl
 
 	minScore := c.minMatchScore()
 	if bestScore >= minScore {
-		slog.Info(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: returning match '%s' by '%s' (score: %s >= %s)",
+		slog.Debug(fmt.Sprintf("✅ FindBestMatchWithNormalizedPunctuation: returning match '%s' by '%s' (score: %s >= %s)",
 			bestMatch.Title, bestMatch.DisplayArtist(), formatConfidencePercent(bestScore), formatConfidencePercent(minScore)))
 		return bestMatch
 	}
 
-	slog.Info(fmt.Sprintf("❌ FindBestMatchWithNormalizedPunctuation: no match found (best score: %s < %s)", formatConfidencePercent(bestScore), formatConfidencePercent(minScore)))
+	slog.Debug(fmt.Sprintf("❌ FindBestMatchWithNormalizedPunctuation: no match found (best score: %s < %s)", formatConfidencePercent(bestScore), formatConfidencePercent(minScore)))
 	return nil
 }

@@ -32,6 +32,7 @@ type PlaylistMeta struct {
 // Application holds clients and config for a single run (no persisted state between invocations).
 type Application struct {
 	config      *config.Config
+	debug       bool
 	musicSocial *musicsocial.Client
 	plexClient  *plex.Client
 	lidarr      *lidarr.Client
@@ -61,6 +62,7 @@ func NewApplication(cfg *config.Config, debug bool) (*Application, error) {
 
 	return &Application{
 		config:      cfg,
+		debug:       debug,
 		musicSocial: ms,
 		plexClient:  plexClient,
 		lidarr:      lclient,
@@ -225,9 +227,11 @@ func (app *Application) processPlaylist(ctx context.Context, meta PlaylistMeta, 
 	songs := pl.Tracks
 	app.displaySongs(songs)
 
-	fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
-	fmt.Println("MATCHING SONGS TO PLEX LIBRARY")
-	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
+	if app.debug {
+		fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
+		fmt.Println("MATCHING SONGS TO PLEX LIBRARY")
+		fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
+	}
 
 	matchResults, playlist, diffView, err := app.plexClient.MatchPlaylist(ctx, songs, meta.Name, meta.Description, meta.PageURL, meta.ArtworkURL)
 	if err != nil {
@@ -252,31 +256,41 @@ func (app *Application) displaySongs(songs []track.Track) {
 }
 
 func (app *Application) displayMatchingResults(ctx context.Context, matchResults []plex.MatchResult, songs []track.Track, playlist *plex.PlexPlaylist, diffView plex.PlaylistDiffView) {
-	fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
-	fmt.Println("MATCHING RESULTS")
-	fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
-
 	var titleMatches, noMatches int
 	var missingTracks []plex.MatchResult
 
-	for i, result := range matchResults {
-		status := "❌ No match"
+	for _, result := range matchResults {
 		if result.PlexTrack != nil {
 			switch result.MatchType {
 			case plex.MatchTypeTitleArtist:
-				status = "🔍 Title/Artist match"
 				titleMatches++
 			}
 		} else {
 			noMatches++
 			missingTracks = append(missingTracks, result)
 		}
+	}
 
-		fmt.Printf("%3d. %s - %s: %s", i+1, result.SourceTrack.Artist, result.SourceTrack.Name, status)
-		if result.PlexTrack != nil {
-			fmt.Printf(" (Plex: %s - %s)", result.PlexTrack.DisplayArtist(), result.PlexTrack.Title)
+	if app.debug {
+		fmt.Println("\n" + cliutil.RepeatChar("=", cliutil.SectionWidth))
+		fmt.Println("MATCHING RESULTS")
+		fmt.Println(cliutil.RepeatChar("=", cliutil.SectionWidth))
+
+		for i, result := range matchResults {
+			status := "❌ No match"
+			if result.PlexTrack != nil {
+				switch result.MatchType {
+				case plex.MatchTypeTitleArtist:
+					status = "🔍 Title/Artist match"
+				}
+			}
+
+			fmt.Printf("%3d. %s - %s: %s", i+1, result.SourceTrack.Artist, result.SourceTrack.Name, status)
+			if result.PlexTrack != nil {
+				fmt.Printf(" (Plex: %s - %s)", result.PlexTrack.DisplayArtist(), result.PlexTrack.Title)
+			}
+			fmt.Println()
 		}
-		fmt.Println()
 	}
 
 	app.displaySummary(songs, titleMatches, noMatches, playlist, diffView)

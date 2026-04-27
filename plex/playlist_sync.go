@@ -39,7 +39,7 @@ func (c *Client) MatchSourceTracks(ctx context.Context, songs []track.Track) []M
 		return results
 	}
 
-	slog.InfoContext(ctx, "matching source tracks to Plex",
+	slog.DebugContext(ctx, "matching source tracks to Plex",
 		"count", n, "concurrency", c.matchConcurrency)
 
 	if c.matchConcurrency <= 1 {
@@ -56,7 +56,7 @@ func (c *Client) MatchSourceTracks(ctx context.Context, songs []track.Track) []M
 				return results
 			}
 			song := songs[i]
-			slog.InfoContext(ctx, "processing song",
+			slog.DebugContext(ctx, "processing song",
 				"index", i+1, "total", n, "artist", song.Artist, "title", song.Name)
 			c.fillMatchResult(ctx, &results[i], song)
 		}
