@@ -118,21 +118,38 @@ func TestFprintPlaylistDiff_noColor(t *testing.T) {
 	}
 }
 
-func TestPlexArtistForPlaylistDiffLine_variousArtists(t *testing.T) {
+func TestPlaylistDiffPlexArtistLabel_variousArtists(t *testing.T) {
 	t.Parallel()
-	src := track.Track{Artist: "Khalid", Name: "Love Lies"}
 	tr := &PlexTrack{Artist: "Various Artists", OriginalTitle: "Khalid", Title: "Love Lies"}
-	if got := plexArtistForPlaylistDiffLine(src, tr); got != "Khalid" {
-		t.Fatalf("expected per-track label when it matches source best, got %q", got)
+	want := `"Various Artists" as "Khalid"`
+	if got := playlistDiffPlexArtistLabel(tr); got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
-func TestPlexArtistForPlaylistDiffLine_albumArtistWhenStronger(t *testing.T) {
+func TestPlaylistDiffPlexArtistLabel_albumAndGuestOriginalTitle(t *testing.T) {
 	t.Parallel()
-	src := track.Track{Artist: "ABBA", Name: "Dancing Queen"}
 	tr := &PlexTrack{Artist: "ABBA", OriginalTitle: "Guest", Title: "Dancing Queen"}
-	if got := plexArtistForPlaylistDiffLine(src, tr); got != "ABBA" {
-		t.Fatalf("expected album artist when it matches better, got %q", got)
+	want := `"ABBA" as "Guest"`
+	if got := playlistDiffPlexArtistLabel(tr); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestPlaylistDiffPlexArtistLabel_sortArtistRename(t *testing.T) {
+	t.Parallel()
+	tr := &PlexTrack{Artist: "Diana Gordon", GrandparentTitleSort: "Wynter Gordon", Title: "Dirty Talk"}
+	want := `"Diana Gordon" as "Wynter Gordon"`
+	if got := playlistDiffPlexArtistLabel(tr); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestPlaylistDiffPlexArtistLabel_singleWhenNoAlias(t *testing.T) {
+	t.Parallel()
+	tr := &PlexTrack{Artist: "ABBA", Title: "Dancing Queen"}
+	if got := playlistDiffPlexArtistLabel(tr); got != "ABBA" {
+		t.Fatalf("got %q, want ABBA", got)
 	}
 }
 
@@ -154,8 +171,8 @@ func TestFprintPlaylistDiff_plexLineUsesBestArtistField(t *testing.T) {
 	if strings.Contains(out, "Various Artists - Love Lies") {
 		t.Fatalf("expected plex line to prefer matching track artist, got: %s", out)
 	}
-	if !strings.Contains(out, "Khalid - Love Lies") {
-		t.Fatalf("expected Khalid on plex line, got: %s", out)
+	if !strings.Contains(out, `"Various Artists" as "Khalid" - Love Lies`) {
+		t.Fatalf("expected dual artist label on plex line, got: %s", out)
 	}
 }
 

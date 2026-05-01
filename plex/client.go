@@ -67,21 +67,28 @@ type Client struct {
 	exactMatchesOnly      bool
 	// matchConfidencePercent is the minimum combined match score (0–100) as a fraction in minMatchScore; nil means use config.DefaultMatchConfidencePercent (for tests using &Client{}).
 	matchConfidencePercent *int
+
+	artistSortMu    sync.Mutex
+	artistSortCache map[string]string // Plex artist ratingKey → titleSort from GET /library/metadata/{key}
 }
 
 // PlexTrack represents a track from Plex search and library API responses.
 // Artist is grandparentTitle (the album / library-hierarchy artist; often "Various Artists" on compilations).
 // OriginalTitle, when set, is the per-track artist (performer) — see Plex music Track attributes.
+// GrandparentRatingKey identifies the library Artist item; GrandparentTitleSort is Plex Artist titleSort (Sort Artist),
+// filled after optional metadata fetch when Pass 1 matching fails to reach min confidence.
 type PlexTrack struct {
-	ID            string `xml:"ratingKey,attr"`
-	Title         string `xml:"title,attr"`
-	Artist        string `xml:"grandparentTitle,attr"`
-	OriginalTitle string `xml:"originalTitle,attr"`
-	Album         string `xml:"parentTitle,attr"`
-	Duration      int    `xml:"duration,attr"`
-	AddedAt       string `xml:"addedAt,attr"`
-	UpdatedAt     string `xml:"updatedAt,attr"`
-	File          string `xml:"file,attr"`
+	ID                   string `xml:"ratingKey,attr"`
+	Title                string `xml:"title,attr"`
+	Artist               string `xml:"grandparentTitle,attr"`
+	OriginalTitle        string `xml:"originalTitle,attr"`
+	GrandparentRatingKey string `xml:"grandparentRatingKey,attr"`
+	GrandparentTitleSort string `xml:"-"` // from Artist metadata titleSort, not on Track XML
+	Album                string `xml:"parentTitle,attr"`
+	Duration             int    `xml:"duration,attr"`
+	AddedAt              string `xml:"addedAt,attr"`
+	UpdatedAt            string `xml:"updatedAt,attr"`
+	File                 string `xml:"file,attr"`
 }
 
 // DisplayArtist returns a label for user-facing output: the track artist when set, else the album artist.
@@ -102,6 +109,9 @@ func (t PlexTrack) exactTitleAndArtistMatch(titleLower, sourceArtistLower string
 		return true
 	}
 	if s := strings.TrimSpace(t.OriginalTitle); s != "" && sourceArtistLower == strings.ToLower(s) {
+		return true
+	}
+	if s := strings.TrimSpace(t.GrandparentTitleSort); s != "" && sourceArtistLower == strings.ToLower(s) {
 		return true
 	}
 	return false

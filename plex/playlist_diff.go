@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/grrywlsn/plexify/internal/cliutil"
-	"github.com/grrywlsn/plexify/track"
 	"golang.org/x/term"
 )
 
@@ -232,19 +231,19 @@ func fprintPlaylistDiff(w io.Writer, view PlaylistDiffView, useColor, outerBanne
 			src := ent.MatchResult.SourceTrack
 			pt := ent.MatchResult.PlexTrack
 			printLine(ansiGreen+ansiBold, fmt.Sprintf("+ %s: ", sourceServiceDisplayName)+formatArtistTitle(src.Artist, src.Name))
-			plexArtist := plexArtistForPlaylistDiffLine(src, pt)
+			plexArtist := playlistDiffPlexArtistLabel(pt)
 			printLine(ansiGreen, "+ plex:         "+formatArtistTitle(plexArtist, pt.Title)+fmt.Sprintf(" (confidence: %s)", formatConfidencePercent(ent.MatchResult.Confidence)))
 		case PlaylistDiffRemove:
 			pt := &view.Old[op.OldIdx]
-			printLine(ansiRed+ansiBold, "- plex:         "+formatArtistTitle(pt.DisplayArtist(), pt.Title))
+			printLine(ansiRed+ansiBold, "- plex:         "+formatArtistTitle(playlistDiffPlexArtistLabel(pt), pt.Title))
 		case PlaylistDiffChange:
 			oldTr := &view.Old[op.OldIdx]
 			ent := view.Desired[op.NewIdx]
 			src := ent.MatchResult.SourceTrack
 			newPt := ent.MatchResult.PlexTrack
-			printLine(ansiYellow+ansiBold, "~ was (plex):    "+formatArtistTitle(oldTr.DisplayArtist(), oldTr.Title))
+			printLine(ansiYellow+ansiBold, "~ was (plex):    "+formatArtistTitle(playlistDiffPlexArtistLabel(oldTr), oldTr.Title))
 			printLine(ansiYellow, "~ now (source): "+formatArtistTitle(src.Artist, src.Name))
-			nowPlexArtist := plexArtistForPlaylistDiffLine(src, newPt)
+			nowPlexArtist := playlistDiffPlexArtistLabel(newPt)
 			printLine(ansiYellow, "~ now (plex):   "+formatArtistTitle(nowPlexArtist, newPt.Title)+fmt.Sprintf(" (confidence: %s)", formatConfidencePercent(ent.MatchResult.Confidence)))
 		}
 		fmt.Fprintln(w, "")
@@ -255,37 +254,24 @@ func formatArtistTitle(artist, title string) string {
 	return fmt.Sprintf("%s - %s", artist, title)
 }
 
-// plexArtistForPlaylistDiffLine picks the Plex grandparent (album) or per-track (originalTitle) name
-// to show on diff lines by comparing each field against the source track’s search artist candidates,
-// using the same artistMatchSimilarity logic as FindBestMatch. When only one field is set, that
-// value is used. For rows without a source (e.g. old playlist items), use PlexTrack.DisplayArtist.
-func plexArtistForPlaylistDiffLine(src track.Track, tr *PlexTrack) string {
+// playlistDiffPlexArtistLabel formats album artist (grandparentTitle) with per-track performer or Sort Artist
+// when they differ, e.g. "Various Artists" as "Madonna" or "Diana Gordon" as "Wynter Gordon"; otherwise DisplayArtist().
+func playlistDiffPlexArtistLabel(tr *PlexTrack) string {
 	if tr == nil {
 		return ""
 	}
-	a := strings.TrimSpace(tr.Artist)
+	left := strings.TrimSpace(tr.Artist)
 	ot := strings.TrimSpace(tr.OriginalTitle)
-	if ot == "" {
-		return a
+	gs := strings.TrimSpace(tr.GrandparentTitleSort)
+	var right string
+	switch {
+	case ot != "" && !strings.EqualFold(left, ot):
+		right = ot // compilation / guest performer vs album artist
+	case gs != "" && !strings.EqualFold(left, gs):
+		right = gs // Sort Artist vs display artist (rename); skipped when ot already provides the alias
 	}
-	if a == "" {
-		return ot
+	if right != "" && left != "" {
+		return fmt.Sprintf(`"%s" as "%s"`, left, right)
 	}
-	var c Client
-	bestA := 0.0
-	for _, cand := range src.PlexSearchArtistCandidates() {
-		if s := c.artistMatchSimilarity(cand, a); s > bestA {
-			bestA = s
-		}
-	}
-	bestOt := 0.0
-	for _, cand := range src.PlexSearchArtistCandidates() {
-		if s := c.artistMatchSimilarity(cand, ot); s > bestOt {
-			bestOt = s
-		}
-	}
-	if bestOt >= bestA {
-		return ot
-	}
-	return a
+	return strings.TrimSpace(tr.DisplayArtist())
 }

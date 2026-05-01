@@ -60,13 +60,18 @@ func (c *Client) artistSimilarityTitleArtistForPlexField(song track.Track, plexF
 	return artistSimilarity
 }
 
-// bestArtistSimilarityTitleArtist returns the best 0–1 match over grandparent and originalTitle.
+// bestArtistSimilarityTitleArtist returns the best 0–1 match over grandparent, originalTitle, and GrandparentTitleSort.
 func (c *Client) bestArtistSimilarityTitleArtist(song track.Track, plex *PlexTrack) float64 {
 	var best float64
 	if s := strings.TrimSpace(plex.Artist); s != "" {
 		best = c.artistSimilarityTitleArtistForPlexField(song, s)
 	}
 	if s := strings.TrimSpace(plex.OriginalTitle); s != "" {
+		if v := c.artistSimilarityTitleArtistForPlexField(song, s); v > best {
+			best = v
+		}
+	}
+	if s := strings.TrimSpace(plex.GrandparentTitleSort); s != "" {
 		if v := c.artistSimilarityTitleArtistForPlexField(song, s); v > best {
 			best = v
 		}

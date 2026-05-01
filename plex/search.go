@@ -274,7 +274,7 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 			c.debugLog("  Result %d: '%s' by '%s' (ID: %s)", i+1, track.Title, track.DisplayArtist(), track.ID)
 		}
 	}
-	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
+	result := c.findBestMatchWithOptionalArtistSortRetry(ctx, searchResp.Tracks, title, artist, sourceAlbum, false)
 	if result != nil {
 		slog.Debug(fmt.Sprintf("✅ searchByTitle: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
 	} else {
@@ -317,7 +317,7 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum 
 	}
 
 	// Find best match among search results
-	result := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum)
+	result := c.findBestMatchWithOptionalArtistSortRetry(ctx, searchResp.Tracks, title, artist, sourceAlbum, false)
 	if result != nil {
 		slog.Debug(fmt.Sprintf("✅ searchByArtist: found match '%s' by '%s'", result.Title, result.DisplayArtist()))
 	}
@@ -359,7 +359,7 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 			"err", err, "query", query)
 		return nil, nil
 	}
-	if track := c.FindBestMatch(searchResp.Tracks, title, artist, sourceAlbum); track != nil {
+	if track := c.findBestMatchWithOptionalArtistSortRetry(ctx, searchResp.Tracks, title, artist, sourceAlbum, false); track != nil {
 		slog.Debug(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.DisplayArtist()))
 		return track, nil
 	}
@@ -451,7 +451,7 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 
 	// Find best match among all tracks
 	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(libraryResp.Tracks))
-	result := c.FindBestMatch(libraryResp.Tracks, title, artist, sourceAlbum)
+	result := c.findBestMatchWithOptionalArtistSortRetry(ctx, libraryResp.Tracks, title, artist, sourceAlbum, true)
 	if result != nil {
 		slog.Debug(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.DisplayArtist(), title, artist))
 	} else {
@@ -523,10 +523,16 @@ func (c *Client) artistMatchSimilarity(artist, plexArtist string) float64 {
 	return artistSimilarity
 }
 
-// bestPlexTrackArtistSimilarity is the max artist similarity over grandparent (album) and originalTitle (track) when set.
+// bestPlexTrackArtistSimilarity is the max artist similarity over grandparent (album), originalTitle (track),
+// and GrandparentTitleSort (Plex Artist titleSort) when set.
 func (c *Client) bestPlexTrackArtistSimilarity(artist string, tr PlexTrack) float64 {
 	best := c.artistMatchSimilarity(artist, tr.Artist)
 	if s := strings.TrimSpace(tr.OriginalTitle); s != "" {
+		if v := c.artistMatchSimilarity(artist, s); v > best {
+			best = v
+		}
+	}
+	if s := strings.TrimSpace(tr.GrandparentTitleSort); s != "" {
 		if v := c.artistMatchSimilarity(artist, s); v > best {
 			best = v
 		}
@@ -539,6 +545,11 @@ func (c *Client) bestPlexTrackArtistSimilarityNormPunct(artist string, tr PlexTr
 	an := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(artist)))
 	sim := c.calculateStringSimilarity(an, strings.ToLower(strings.TrimSpace(c.normalizePunctuation(tr.Artist))))
 	if s := strings.TrimSpace(tr.OriginalTitle); s != "" {
+		if v := c.calculateStringSimilarity(an, strings.ToLower(strings.TrimSpace(c.normalizePunctuation(s)))); v > sim {
+			sim = v
+		}
+	}
+	if s := strings.TrimSpace(tr.GrandparentTitleSort); s != "" {
 		if v := c.calculateStringSimilarity(an, strings.ToLower(strings.TrimSpace(c.normalizePunctuation(s)))); v > sim {
 			sim = v
 		}
@@ -560,6 +571,12 @@ func (c *Client) plexTrackNormPunctTitleArtistMatch(tr PlexTrack, titleLower, ar
 	if s := strings.TrimSpace(tr.OriginalTitle); s != "" {
 		no := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(s)))
 		if artistLower == no {
+			return true
+		}
+	}
+	if s := strings.TrimSpace(tr.GrandparentTitleSort); s != "" {
+		ns := strings.ToLower(strings.TrimSpace(c.normalizePunctuation(s)))
+		if artistLower == ns {
 			return true
 		}
 	}
