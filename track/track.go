@@ -10,6 +10,10 @@ type Track struct {
 	ISRC                      string
 	MusicBrainzID             string // Recording MBID when known
 	MusicBrainzReleaseGroupID string // When set (from API), missing-track summary links to release group instead of recording
+	// MusicBrainzArtistCredits are performer names from music-social musicbrainz.artist_credits (when set).
+	// PlexSearchArtistCandidates tries each distinct name after the main Artist field so catalog aliases
+	// match Plex without an extra Plex Artist metadata fetch when possible.
+	MusicBrainzArtistCredits []string
 
 	// Streaming album identifiers from music-social.com JSON (optional).
 	SpotifyAlbumURI   string // e.g. spotify:album:{id} or https://open.spotify.com/album/...
