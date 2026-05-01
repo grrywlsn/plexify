@@ -43,4 +43,17 @@ func TestTrack_PlexSearchArtistCandidates(t *testing.T) {
 	if got := (Track{Artist: "SOPHIE & Bibi Bourelly"}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantAmp) {
 		t.Errorf("ampersand collab: got %v want %v", got, wantAmp)
 	}
+	mb := []string{"Wynter Gordon", "Diana Gordon"}
+	wantMB := []string{"Wynter Gordon", "Diana Gordon"}
+	if got := (Track{Artist: "Wynter Gordon", MusicBrainzArtistCredits: mb}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantMB) {
+		t.Errorf("mb dedupe with artist: got %v want %v", got, wantMB)
+	}
+	wantMB2 := []string{"Le Youth", "Le Youth, Forester, Robertson", "Guest"}
+	if got := (Track{Artist: "Le Youth, Forester, Robertson", MusicBrainzArtistCredits: []string{"Guest"}}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantMB2) {
+		t.Errorf("mb after comma artist: got %v want %v", got, wantMB2)
+	}
+	wantCreditsOnly := []string{"Diana Gordon"}
+	if got := (Track{MusicBrainzArtistCredits: []string{"Diana Gordon"}}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantCreditsOnly) {
+		t.Errorf("credits only: got %v want %v", got, wantCreditsOnly)
+	}
 }

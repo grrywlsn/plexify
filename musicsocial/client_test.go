@@ -71,6 +71,48 @@ func TestClient_GetPlaylist(t *testing.T) {
 	}
 }
 
+func TestClient_GetPlaylist_musicbrainzArtistCredits(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/playlist/plmb.json" {
+			http.NotFound(w, r)
+			return
+		}
+		doc := map[string]any{
+			"id": "plmb", "title": "MB", "owner": "alice", "track_count": 1,
+			"updated_at": "2025-01-01T00:00:00Z",
+			"tracks": []map[string]any{
+				{
+					"position": 1, "title": "Dirty Talk", "artist": "Diana Gordon", "album": "Dirty Talk",
+					"musicbrainz": map[string]any{
+						"track_gid": "tg",
+						"artist_credits": []map[string]any{
+							{"artist_gid": "aec279b2-b9cc-488c-b892-f2271605fa11", "name": "Wynter Gordon"},
+						},
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(doc)
+	}))
+	defer ts.Close()
+
+	c, err := NewClient(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl, err := c.GetPlaylist("plmb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pl.Tracks) != 1 {
+		t.Fatalf("want 1 track, got %d", len(pl.Tracks))
+	}
+	tr := pl.Tracks[0]
+	if len(tr.MusicBrainzArtistCredits) != 1 || tr.MusicBrainzArtistCredits[0] != "Wynter Gordon" {
+		t.Fatalf("credits: %+v", tr.MusicBrainzArtistCredits)
+	}
+}
+
 func TestClient_GetPlaylist_streamingAlbums(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/playlist/pl2.json" {

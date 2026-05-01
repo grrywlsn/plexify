@@ -42,14 +42,37 @@ func primaryBeforeAmpersand(s string) string {
 // The primary (first comma- or ampersand-listed) name is tried first so lookups match
 // typical single-artist Plex metadata; the full original string is tried second when it
 // differs (fallback for band names that legitimately contain commas or "&").
+// When MusicBrainzArtistCredits is set (music-social musicbrainz.artist_credits), each distinct
+// credit name is appended next—authoritative aliases that often align with Plex without extra API calls.
 func (t Track) PlexSearchArtistCandidates() []string {
+	seen := make(map[string]struct{})
+	var out []string
+	appendUnique := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		k := strings.ToLower(s)
+		if _, ok := seen[k]; ok {
+			return
+		}
+		seen[k] = struct{}{}
+		out = append(out, s)
+	}
+
 	full := strings.TrimSpace(t.Artist)
-	if full == "" {
+	if full != "" {
+		primary := PrimaryListedArtist(t.Artist)
+		appendUnique(primary)
+		if primary != full {
+			appendUnique(full)
+		}
+	}
+	for _, name := range t.MusicBrainzArtistCredits {
+		appendUnique(name)
+	}
+	if len(out) == 0 {
 		return []string{""}
 	}
-	primary := PrimaryListedArtist(t.Artist)
-	if primary == full {
-		return []string{full}
-	}
-	return []string{primary, full}
+	return out
 }

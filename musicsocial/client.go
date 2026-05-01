@@ -94,10 +94,16 @@ type appleMusicDTO struct {
 	AlbumID string `json:"album_id"`
 }
 
+type mbArtistCreditDTO struct {
+	ArtistGID string `json:"artist_gid"`
+	Name      string `json:"name"`
+}
+
 type mbTrackDTO struct {
-	TrackGID        string   `json:"track_gid"`
-	ReleaseGroupGID string   `json:"release_group_gid,omitempty"`
-	ISRCs           []string `json:"isrcs,omitempty"`
+	TrackGID        string              `json:"track_gid"`
+	ReleaseGroupGID string              `json:"release_group_gid,omitempty"`
+	ISRCs           []string            `json:"isrcs,omitempty"`
+	ArtistCredits   []mbArtistCreditDTO `json:"artist_credits,omitempty"`
 }
 
 // ListUserPlaylists returns public playlists for username.
@@ -165,6 +171,11 @@ func (c *Client) GetPlaylist(playlistID string) (*Playlist, error) {
 			tr.MusicBrainzReleaseGroupID = tj.MB.ReleaseGroupGID
 			if len(tj.MB.ISRCs) > 0 {
 				tr.ISRC = tj.MB.ISRCs[0]
+			}
+			for _, ac := range tj.MB.ArtistCredits {
+				if n := strings.TrimSpace(ac.Name); n != "" {
+					tr.MusicBrainzArtistCredits = append(tr.MusicBrainzArtistCredits, n)
+				}
 			}
 		}
 		if tj.Spotify != nil {
