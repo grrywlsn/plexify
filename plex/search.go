@@ -257,17 +257,19 @@ func (c *Client) searchByTitle(ctx context.Context, title, artist, sourceAlbum s
 	if err != nil {
 		return nil, fmt.Errorf("failed to make search request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		return nil, newPlexHTTPError(resp.StatusCode, "search by title", b)
 	}
 
 	var searchResp PlexResponse
 	if err := decodePlexResponseXML(resp, &searchResp); err != nil {
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("failed to decode search response: %w", err)
 	}
+	_ = resp.Body.Close()
 
 	// Find best match among search results
 	slog.Debug(fmt.Sprintf("🔍 searchByTitle: searching for '%s' by '%s', found %d results", title, artist, len(searchResp.Tracks)))
@@ -306,17 +308,19 @@ func (c *Client) searchByArtist(ctx context.Context, title, artist, sourceAlbum 
 	if err != nil {
 		return nil, fmt.Errorf("failed to make artist search request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		return nil, newPlexHTTPError(resp.StatusCode, "search by artist", b)
 	}
 
 	var searchResp PlexResponse
 	if err := decodePlexResponseXML(resp, &searchResp); err != nil {
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("failed to decode artist search response: %w", err)
 	}
+	_ = resp.Body.Close()
 
 	// Find best match among search results
 	result := c.findBestMatchWithOptionalArtistSortRetry(ctx, searchResp.Tracks, title, artist, sourceAlbum, false)
@@ -348,19 +352,21 @@ func (c *Client) searchByCombinedQuery(ctx context.Context, title, artist, sourc
 	if err != nil {
 		return nil, fmt.Errorf("failed to make combined search request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		return nil, newPlexHTTPError(resp.StatusCode, "combined search", b)
 	}
 
 	var searchResp PlexResponse
 	if err := decodePlexResponseXML(resp, &searchResp); err != nil {
+		_ = resp.Body.Close()
 		slog.WarnContext(ctx, "combined Plex search returned OK but XML decode failed; trying other strategies",
 			"err", err, "query", query)
 		return nil, nil
 	}
+	_ = resp.Body.Close()
 	if track := c.findBestMatchWithOptionalArtistSortRetry(ctx, searchResp.Tracks, title, artist, sourceAlbum, false); track != nil {
 		slog.Debug(fmt.Sprintf("✅ searchByCombinedQuery: found match '%s' by '%s'", track.Title, track.DisplayArtist()))
 		return track, nil
@@ -439,17 +445,19 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	if err != nil {
 		return nil, fmt.Errorf("failed to make library request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		return nil, newPlexHTTPError(resp.StatusCode, "library all", b)
 	}
 
 	var libraryResp PlexResponse
 	if err := decodePlexResponseXML(resp, &libraryResp); err != nil {
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("failed to decode library response: %w", err)
 	}
+	_ = resp.Body.Close()
 
 	// Find best match among all tracks
 	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(libraryResp.Tracks))
