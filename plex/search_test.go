@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/grrywlsn/plexify/config"
 	"github.com/grrywlsn/plexify/track"
@@ -188,5 +190,139 @@ func TestSearchTrack_punctuationNormalizedQueryFindsPlexHyphenTitle(t *testing.T
 	}
 	if kind != MatchTypeTitleArtist {
 		t.Errorf("expected MatchTypeTitleArtist, got %s", kind)
+	}
+}
+
+func TestSearchByTitle_DoesNotDeadlockOnArtistSortRetry(t *testing.T) {
+	t.Parallel()
+
+	const sectionID = 2
+	var metadataGets int32
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		switch {
+		case r.URL.Path == fmt.Sprintf("/library/sections/%d/search", sectionID):
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Track ratingKey="1" title="Completely Different" grandparentTitle="Nope" grandparentRatingKey="900" parentTitle="X"/>` +
+				`</MediaContainer>`))
+			return
+		case strings.HasPrefix(r.URL.Path, "/library/metadata/"):
+			atomic.AddInt32(&metadataGets, 1)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Artist ratingKey="900" title="Nope" titleSort="Still Nope"/>` +
+				`</MediaContainer>`))
+			return
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Plex: config.PlexConfig{
+			URL:                    ts.URL,
+			Token:                  "tok",
+			LibrarySectionID:       sectionID,
+			MatchConfidencePercent: 99,
+		},
+	}
+	c := NewClient(cfg)
+	done := make(chan struct{})
+	var (
+		got *PlexTrack
+		err error
+	)
+	go func() {
+		got, err = c.searchByTitle(context.Background(), "Wanted Song", "Wanted Artist", "Wanted Album")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("searchByTitle deadlocked while fetching artist metadata")
+	}
+
+	if err != nil {
+		t.Fatalf("searchByTitle returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected no match, got %+v", got)
+	}
+	if atomic.LoadInt32(&metadataGets) == 0 {
+		t.Fatal("expected artist metadata retry request")
+	}
+}
+
+func TestSearchByCombinedQuery_DoesNotDeadlockOnArtistSortRetry(t *testing.T) {
+	t.Parallel()
+
+	const sectionID = 2
+	var (
+		searchGets   int32
+		metadataGets int32
+	)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		switch {
+		case r.URL.Path == fmt.Sprintf("/library/sections/%d/search", sectionID):
+			atomic.AddInt32(&searchGets, 1)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Track ratingKey="2" title="Wrong Track" grandparentTitle="Nope" grandparentRatingKey="901" parentTitle="Y"/>` +
+				`</MediaContainer>`))
+			return
+		case strings.HasPrefix(r.URL.Path, "/library/metadata/"):
+			atomic.AddInt32(&metadataGets, 1)
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Artist ratingKey="901" title="Nope" titleSort="Still Nope"/>` +
+				`</MediaContainer>`))
+			return
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Plex: config.PlexConfig{
+			URL:                    ts.URL,
+			Token:                  "tok",
+			LibrarySectionID:       sectionID,
+			MatchConfidencePercent: 99,
+		},
+	}
+	c := NewClient(cfg)
+
+	done := make(chan struct{})
+	var (
+		got *PlexTrack
+		err error
+	)
+	go func() {
+		got, err = c.searchByCombinedQuery(context.Background(), "Wanted Song", "Wanted Artist", "Wanted Album")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("searchByCombinedQuery deadlocked while fetching artist metadata")
+	}
+
+	if err != nil {
+		t.Fatalf("searchByCombinedQuery returned error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected no match, got %+v", got)
+	}
+	if atomic.LoadInt32(&searchGets) == 0 {
+		t.Fatal("expected combined search request")
+	}
+	if atomic.LoadInt32(&metadataGets) == 0 {
+		t.Fatal("expected artist metadata retry request")
 	}
 }
