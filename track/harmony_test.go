@@ -71,7 +71,7 @@ func TestHarmonyAddToMusicBrainzURL(t *testing.T) {
 			if release != tt.wantReleaseInURL {
 				t.Fatalf("url query param: got %q want %q", release, tt.wantReleaseInURL)
 			}
-			for _, key := range []string{"gtin", "region", "musicbrainz", "deezer", "itunes", "spotify", "tidal"} {
+			for _, key := range []string{"gtin", "region", "musicbrainz", "deezer", "discogs", "itunes", "qobuz", "spotify", "tidal"} {
 				if u.Query().Get(key) != "" {
 					t.Fatalf("expected empty %q, got %q", key, u.Query().Get(key))
 				}
