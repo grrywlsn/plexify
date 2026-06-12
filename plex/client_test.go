@@ -353,6 +353,10 @@ func TestNormalizeAccents(t *testing.T) {
 		{"Русский", "Русский"},   // Cyrillic, should remain unchanged
 		{"中文", "中文"},             // Chinese, should remain unchanged
 		{"日本語", "日本語"},           // Japanese, should remain unchanged
+		{"Cœur Stone", "Coeur Stone"},
+		{"Œufs", "OEufs"}, // uppercase ligature → OE; callers typically compare lowercased
+		{"Ænima", "AEnima"},
+		{"æther", "aether"},
 	}
 
 	for _, test := range tests {
