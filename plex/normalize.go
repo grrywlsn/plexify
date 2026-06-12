@@ -320,6 +320,13 @@ func (c *Client) normalizePunctuation(s string) string {
 
 // normalizeAccents removes or normalizes accented characters to their base form
 func (c *Client) normalizeAccents(s string) string {
+	// Latin typographic ligatures: streaming/MusicBrainz often use ASCII digraphs ("Coeur")
+	// while Plex or store tags use single codepoints ("Cœur"). Map to ASCII before per-rune accents.
+	s = strings.ReplaceAll(s, "\u0152", "OE") // Œ
+	s = strings.ReplaceAll(s, "\u0153", "oe") // œ
+	s = strings.ReplaceAll(s, "\u00C6", "AE") // Æ
+	s = strings.ReplaceAll(s, "\u00E6", "ae") // æ
+
 	// Common accent mappings for music-related terms
 	accentMap := map[rune]rune{
 		// Spanish/Portuguese accents - lowercase

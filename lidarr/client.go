@@ -306,7 +306,44 @@ func positiveIntFromJSON(v interface{}) bool {
 	return intFromInterface(v) > 0
 }
 
+// ensureMonitoredAddPayload forces the nested artist and album releases to monitored so Lidarr tracks
+// missing files (Wanted → Missing). Lidarr's AddArtistService sets artist.Monitored=false when
+// artist.addOptions.monitor is "none" (common on lookup payloads); we override to "all" for this add path.
+func ensureMonitoredAddPayload(album map[string]interface{}) {
+	if album == nil {
+		return
+	}
+	art, ok := album["artist"].(map[string]interface{})
+	if !ok || art == nil {
+		return
+	}
+	art["monitored"] = true
+	var ao map[string]interface{}
+	if existing, ok := art["addOptions"].(map[string]interface{}); ok && existing != nil {
+		ao = existing
+	} else {
+		ao = make(map[string]interface{})
+		art["addOptions"] = ao
+	}
+	ao["monitor"] = "all"
+
+	for _, key := range []string{"releases", "Releases"} {
+		list, ok := album[key].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range list {
+			rel, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			rel["monitored"] = true
+		}
+	}
+}
+
 func (c *Client) postAlbum(ctx context.Context, album map[string]interface{}) error {
+	ensureMonitoredAddPayload(album)
 	album["monitored"] = true
 	album["addOptions"] = map[string]interface{}{
 		"searchForNewAlbum": true,
