@@ -399,7 +399,11 @@ func (app *Application) addMissingReleaseGroupsToLidarr(ctx context.Context, mis
 			continue
 		}
 		if res.AlreadyPresent {
-			fmt.Printf("ℹ️  Lidarr: release group %s already in library\n", id)
+			if res.EnsuredMonitored {
+				fmt.Printf("ℹ️  Lidarr: release group %s already in library; ensured album, releases, and artist are monitored\n", id)
+			} else {
+				fmt.Printf("ℹ️  Lidarr: release group %s already in library\n", id)
+			}
 		} else if res.Added {
 			fmt.Printf("✅ Lidarr: added release group %s (search for release started)\n", id)
 		}

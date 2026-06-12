@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,10 +70,14 @@ type AddReleaseGroupResult struct {
 	ReleaseGroupID string
 	AlreadyPresent bool
 	Added          bool
+	// EnsuredMonitored is true when the release group was already in Lidarr and we successfully ran
+	// monitor/album/artist refresh (PUT album/monitor, PUT album, PUT artist as needed).
+	EnsuredMonitored bool
 }
 
 // AddReleaseGroupIfMissing looks up a MusicBrainz release group (Lidarr foreign album id), adds it
-// with search when not already in the Lidarr library, and is idempotent per Lidarr's album list.
+// with search when not already in the Lidarr library, or when already present forces album, releases,
+// and artist monitored via the Lidarr API so missing tracks stay visible.
 func (c *Client) AddReleaseGroupIfMissing(ctx context.Context, releaseGroupMBID string) (AddReleaseGroupResult, error) {
 	rid := strings.TrimSpace(releaseGroupMBID)
 	out := AddReleaseGroupResult{ReleaseGroupID: rid}
@@ -80,12 +85,16 @@ func (c *Client) AddReleaseGroupIfMissing(ctx context.Context, releaseGroupMBID 
 		return out, fmt.Errorf("empty release group id")
 	}
 
-	present, err := c.albumInLibrary(ctx, rid)
+	existing, err := c.fetchAlbumsByForeignAlbumID(ctx, rid)
 	if err != nil {
 		return out, err
 	}
-	if present {
+	if len(existing) > 0 {
 		out.AlreadyPresent = true
+		if err := c.ensureExistingAlbumsMonitored(ctx, existing); err != nil {
+			return out, err
+		}
+		out.EnsuredMonitored = true
 		return out, nil
 	}
 
@@ -103,33 +112,237 @@ func (c *Client) AddReleaseGroupIfMissing(ctx context.Context, releaseGroupMBID 
 	return out, nil
 }
 
-func (c *Client) albumInLibrary(ctx context.Context, foreignAlbumID string) (bool, error) {
+func (c *Client) fetchAlbumsByForeignAlbumID(ctx context.Context, foreignAlbumID string) ([]map[string]interface{}, error) {
 	u, err := url.Parse(c.base + "/api/v1/album")
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	q := u.Query()
 	q.Set("foreignAlbumId", foreignAlbumID)
 	u.RawQuery = q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	c.setDefaultHeaders(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("list album by foreign id: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+		return nil, fmt.Errorf("list album by foreign id: %s: %s", resp.Status, strings.TrimSpace(string(b)))
 	}
-	var albums []json.RawMessage
+	var albums []map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&albums); err != nil {
-		return false, fmt.Errorf("decode album list: %w", err)
+		return nil, fmt.Errorf("decode album list: %w", err)
 	}
-	return len(albums) > 0, nil
+	return albums, nil
+}
+
+func (c *Client) putAlbumsMonitor(ctx context.Context, albumIDs []int, monitored bool) error {
+	if len(albumIDs) == 0 {
+		return nil
+	}
+	ids := make([]interface{}, len(albumIDs))
+	for i, id := range albumIDs {
+		ids[i] = id
+	}
+	payload := map[string]interface{}{
+		"albumIds":  ids,
+		"monitored": monitored,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	u := c.base + "/api/v1/album/monitor"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	c.setDefaultHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("PUT album/monitor: %s: %s", resp.Status, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+func (c *Client) getAlbumJSON(ctx context.Context, albumID int) (map[string]interface{}, error) {
+	u := c.base + "/api/v1/album/" + strconv.Itoa(albumID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setDefaultHeaders(req)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET album %d: %s: %s", albumID, resp.Status, strings.TrimSpace(string(b)))
+	}
+	var out map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode album %d: %w", albumID, err)
+	}
+	return out, nil
+}
+
+func (c *Client) putAlbumJSON(ctx context.Context, albumID int, album map[string]interface{}) error {
+	u := c.base + "/api/v1/album/" + strconv.Itoa(albumID)
+	body, err := json.Marshal(album)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	c.setDefaultHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("PUT album %d: %s: %s", albumID, resp.Status, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+func (c *Client) getArtistJSON(ctx context.Context, artistID int) (map[string]interface{}, error) {
+	u := c.base + "/api/v1/artist/" + strconv.Itoa(artistID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.setDefaultHeaders(req)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET artist %d: %s: %s", artistID, resp.Status, strings.TrimSpace(string(b)))
+	}
+	var out map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode artist %d: %w", artistID, err)
+	}
+	return out, nil
+}
+
+func (c *Client) putArtistJSON(ctx context.Context, artistID int, artist map[string]interface{}) error {
+	u := c.base + "/api/v1/artist/" + strconv.Itoa(artistID)
+	body, err := json.Marshal(artist)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	c.setDefaultHeaders(req)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("PUT artist %d: %s: %s", artistID, resp.Status, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
+// applyMonitoringToExistingAlbumMap sets monitored on the album, nested artist, and all releases.
+// Used with GET /api/v1/album/{id} payloads so Lidarr lists missing tracks for that release group.
+func applyMonitoringToExistingAlbumMap(album map[string]interface{}) {
+	if album == nil {
+		return
+	}
+	album["monitored"] = true
+	if art, ok := album["artist"].(map[string]interface{}); ok && art != nil {
+		art["monitored"] = true
+	}
+	for _, key := range []string{"releases", "Releases", "albumReleases", "AlbumReleases"} {
+		list, ok := album[key].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range list {
+			rel, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			rel["monitored"] = true
+		}
+	}
+}
+
+func (c *Client) ensureArtistMonitored(ctx context.Context, artistID int) error {
+	art, err := c.getArtistJSON(ctx, artistID)
+	if err != nil {
+		return err
+	}
+	art["monitored"] = true
+	return c.putArtistJSON(ctx, artistID, art)
+}
+
+// ensureExistingAlbumsMonitored forces album, album releases, and artist monitored in Lidarr when
+// the MusicBrainz release group is already in the library (e.g. Plexify added it earlier unmonitored).
+func (c *Client) ensureExistingAlbumsMonitored(ctx context.Context, libraryAlbums []map[string]interface{}) error {
+	var albumIDs []int
+	for _, a := range libraryAlbums {
+		id := intFromInterface(a["id"])
+		if id > 0 {
+			albumIDs = append(albumIDs, id)
+		}
+	}
+	if len(albumIDs) == 0 {
+		return fmt.Errorf("Lidarr album list by foreignAlbumId returned no usable album id")
+	}
+	if err := c.putAlbumsMonitor(ctx, albumIDs, true); err != nil {
+		return err
+	}
+	artistSeen := make(map[int]struct{})
+	for _, albumID := range albumIDs {
+		full, err := c.getAlbumJSON(ctx, albumID)
+		if err != nil {
+			return err
+		}
+		applyMonitoringToExistingAlbumMap(full)
+		if err := c.putAlbumJSON(ctx, albumID, full); err != nil {
+			return err
+		}
+		if art, ok := full["artist"].(map[string]interface{}); ok && art != nil {
+			aid := intFromInterface(art["id"])
+			if aid > 0 {
+				if _, ok := artistSeen[aid]; !ok {
+					artistSeen[aid] = struct{}{}
+					if err := c.ensureArtistMonitored(ctx, aid); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (c *Client) lookupFirstAlbum(ctx context.Context, releaseGroupMBID string) (map[string]interface{}, error) {
@@ -327,7 +540,7 @@ func ensureMonitoredAddPayload(album map[string]interface{}) {
 	}
 	ao["monitor"] = "all"
 
-	for _, key := range []string{"releases", "Releases"} {
+	for _, key := range []string{"releases", "Releases", "albumReleases", "AlbumReleases"} {
 		list, ok := album[key].([]interface{})
 		if !ok {
 			continue

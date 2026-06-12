@@ -100,13 +100,43 @@ func TestAddReleaseGroupIfMissing_Adds(t *testing.T) {
 
 func TestAddReleaseGroupIfMissing_SkipWhenPresent(t *testing.T) {
 	mbid := "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+	var monitorBody map[string]interface{}
+	var putAlbumBody map[string]interface{}
+	var putArtistBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/album" {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/album" && r.URL.Query().Get("foreignAlbumId") == mbid:
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`[{"id":1}]`))
-			return
+			_, _ = w.Write([]byte(`[{"id":1,"foreignAlbumId":"` + mbid + `"}]`))
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/album/monitor":
+			_ = json.NewDecoder(r.Body).Decode(&monitorBody)
+			w.WriteHeader(http.StatusAccepted)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/album/1":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":               1.0,
+				"foreignAlbumId":   mbid,
+				"monitored":        false,
+				"title":            "Existing",
+				"artist":           map[string]interface{}{"id": 10.0, "monitored": false},
+				"releases":         []interface{}{map[string]interface{}{"id": 5.0, "monitored": false, "title": "R1"}},
+				"albumReleases":    []interface{}{},
+				"anyReleaseOk":     true,
+				"artistId":         10.0,
+				"artistMetadataId": 99.0,
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/album/1":
+			_ = json.NewDecoder(r.Body).Decode(&putAlbumBody)
+			w.WriteHeader(http.StatusAccepted)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/artist/10":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"id": 10.0, "monitored": false, "artistName": "Test Artist",
+			})
+		case r.Method == http.MethodPut && r.URL.Path == "/api/v1/artist/10":
+			_ = json.NewDecoder(r.Body).Decode(&putArtistBody)
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			t.Fatalf("unexpected %s %s", r.Method, r.URL.String())
 		}
-		t.Fatalf("unexpected %s", r.URL.Path)
 	}))
 	defer srv.Close()
 
@@ -118,8 +148,36 @@ func TestAddReleaseGroupIfMissing_SkipWhenPresent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.AlreadyPresent || res.Added {
+	if !res.AlreadyPresent || res.Added || !res.EnsuredMonitored {
 		t.Fatalf("got %#v", res)
+	}
+	if monitorBody == nil {
+		t.Fatal("expected PUT /album/monitor")
+	}
+	ids, _ := monitorBody["albumIds"].([]interface{})
+	if len(ids) != 1 || int(ids[0].(float64)) != 1 {
+		t.Fatalf("albumIds: %v", monitorBody["albumIds"])
+	}
+	if monitorBody["monitored"] != true {
+		t.Fatalf("monitored: %v", monitorBody["monitored"])
+	}
+	if putAlbumBody == nil || putAlbumBody["monitored"] != true {
+		t.Fatalf("PUT album body monitored: %v", putAlbumBody)
+	}
+	artPut, _ := putAlbumBody["artist"].(map[string]interface{})
+	if artPut == nil || artPut["monitored"] != true {
+		t.Fatalf("PUT album nested artist monitored: %v", artPut)
+	}
+	rels, _ := putAlbumBody["releases"].([]interface{})
+	if len(rels) != 1 {
+		t.Fatalf("releases: %v", putAlbumBody["releases"])
+	}
+	rel, _ := rels[0].(map[string]interface{})
+	if rel["monitored"] != true {
+		t.Fatalf("release monitored: %v", rel["monitored"])
+	}
+	if putArtistBody == nil || putArtistBody["monitored"] != true {
+		t.Fatalf("PUT artist monitored: %v", putArtistBody)
 	}
 }
 
