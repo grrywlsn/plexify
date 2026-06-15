@@ -323,24 +323,24 @@ func ensureAtMostOneMonitoredReleasePerAlbum(album map[string]interface{}) {
 		}
 	}
 	if len(orderedIDs) == 0 {
-		// No numeric ids (unusual): pick the first release object in stable key order as the sole monitored row.
-		var first map[string]interface{}
+		// No numeric ids (unusual): pick the first release in stable key order (key + slice index) as
+		// the sole monitored row. Go maps cannot be compared with ==, so we use position, not pointers.
+		var winKey string
+		winIdx := -1
+	outer:
 		for _, key := range lidarrReleaseJSONKeys {
 			list, ok := album[key].([]interface{})
 			if !ok {
 				continue
 			}
-			for _, item := range list {
-				rel, ok := item.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if first == nil {
-					first = rel
+			for i, item := range list {
+				if _, ok := item.(map[string]interface{}); ok {
+					winKey, winIdx = key, i
+					break outer
 				}
 			}
 		}
-		if first == nil {
+		if winIdx < 0 || winKey == "" {
 			return
 		}
 		for _, key := range lidarrReleaseJSONKeys {
@@ -348,12 +348,12 @@ func ensureAtMostOneMonitoredReleasePerAlbum(album map[string]interface{}) {
 			if !ok {
 				continue
 			}
-			for _, item := range list {
+			for i, item := range list {
 				rel, ok := item.(map[string]interface{})
 				if !ok {
 					continue
 				}
-				rel["monitored"] = rel == first
+				rel["monitored"] = key == winKey && i == winIdx
 			}
 		}
 		return
