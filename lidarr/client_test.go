@@ -113,11 +113,11 @@ func TestAddReleaseGroupIfMissing_SkipWhenPresent(t *testing.T) {
 			w.WriteHeader(http.StatusAccepted)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/album/1":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":               1.0,
-				"foreignAlbumId":   mbid,
-				"monitored":        false,
-				"title":            "Existing",
-				"artist":           map[string]interface{}{"id": 10.0, "monitored": false},
+				"id":             1.0,
+				"foreignAlbumId": mbid,
+				"monitored":      false,
+				"title":          "Existing",
+				"artist":         map[string]interface{}{"id": 10.0, "monitored": false},
 				"releases": []interface{}{
 					map[string]interface{}{"id": 5.0, "monitored": false, "title": "R1"},
 					map[string]interface{}{"id": 6.0, "monitored": false, "title": "R2"},
