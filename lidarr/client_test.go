@@ -113,12 +113,15 @@ func TestAddReleaseGroupIfMissing_SkipWhenPresent(t *testing.T) {
 			w.WriteHeader(http.StatusAccepted)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/album/1":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"id":               1.0,
-				"foreignAlbumId":   mbid,
-				"monitored":        false,
-				"title":            "Existing",
-				"artist":           map[string]interface{}{"id": 10.0, "monitored": false},
-				"releases":         []interface{}{map[string]interface{}{"id": 5.0, "monitored": false, "title": "R1"}},
+				"id":             1.0,
+				"foreignAlbumId": mbid,
+				"monitored":      false,
+				"title":          "Existing",
+				"artist":         map[string]interface{}{"id": 10.0, "monitored": false},
+				"releases": []interface{}{
+					map[string]interface{}{"id": 5.0, "monitored": false, "title": "R1"},
+					map[string]interface{}{"id": 6.0, "monitored": false, "title": "R2"},
+				},
 				"albumReleases":    []interface{}{},
 				"anyReleaseOk":     true,
 				"artistId":         10.0,
@@ -169,12 +172,18 @@ func TestAddReleaseGroupIfMissing_SkipWhenPresent(t *testing.T) {
 		t.Fatalf("PUT album nested artist monitored: %v", artPut)
 	}
 	rels, _ := putAlbumBody["releases"].([]interface{})
-	if len(rels) != 1 {
+	if len(rels) != 2 {
 		t.Fatalf("releases: %v", putAlbumBody["releases"])
 	}
-	rel, _ := rels[0].(map[string]interface{})
-	if rel["monitored"] != true {
-		t.Fatalf("release monitored: %v", rel["monitored"])
+	monCount := 0
+	for _, item := range rels {
+		rel, _ := item.(map[string]interface{})
+		if rel["monitored"] == true {
+			monCount++
+		}
+	}
+	if monCount != 1 {
+		t.Fatalf("expected exactly one monitored release in PUT, got %d (Lidarr allows only one per album)", monCount)
 	}
 	if putArtistBody == nil || putArtistBody["monitored"] != true {
 		t.Fatalf("PUT artist monitored: %v", putArtistBody)
@@ -284,7 +293,8 @@ func TestAddReleaseGroupIfMissing_MonitorsArtistAndReleases(t *testing.T) {
 			"title":          "RG Album",
 			"foreignAlbumId": mbid,
 			"releases": []interface{}{
-				map[string]interface{}{"foreignReleaseId": "rel-1", "title": "Deluxe", "monitored": false},
+				map[string]interface{}{"foreignReleaseId": "rel-1", "id": 101.0, "title": "Deluxe", "monitored": false},
+				map[string]interface{}{"foreignReleaseId": "rel-2", "id": 102.0, "title": "Standard", "monitored": false},
 			},
 			"artist": map[string]interface{}{
 				"foreignArtistId": "artist-mb-1",
@@ -322,12 +332,26 @@ func TestAddReleaseGroupIfMissing_MonitorsArtistAndReleases(t *testing.T) {
 				t.Errorf("artist addOptions.monitor: %v", aopts["monitor"])
 			}
 			rels, _ := got["releases"].([]interface{})
-			if len(rels) != 1 {
+			if len(rels) != 2 {
 				t.Fatalf("releases len: %d", len(rels))
 			}
-			rel, _ := rels[0].(map[string]interface{})
-			if rel["monitored"] != true {
-				t.Errorf("release monitored: %v", rel["monitored"])
+			mon := 0
+			for _, item := range rels {
+				rel, _ := item.(map[string]interface{})
+				if rel["monitored"] == true {
+					mon++
+				}
+			}
+			if mon != 1 {
+				t.Fatalf("expected exactly one monitored release, got %d", mon)
+			}
+			rel0, _ := rels[0].(map[string]interface{})
+			if rel0["monitored"] != true || rel0["id"] != 101.0 {
+				t.Errorf("expected lowest-id release monitored, got %#v", rel0)
+			}
+			rel1, _ := rels[1].(map[string]interface{})
+			if rel1["monitored"] != false {
+				t.Errorf("second release should be unmonitored: %#v", rel1)
 			}
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -343,5 +367,45 @@ func TestAddReleaseGroupIfMissing_MonitorsArtistAndReleases(t *testing.T) {
 	_, err = c.AddReleaseGroupIfMissing(context.Background(), mbid)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEnsureAtMostOneMonitoredReleasePerAlbum_prefersAlreadyMonitoredInOrder(t *testing.T) {
+	album := map[string]interface{}{
+		"releases": []interface{}{
+			map[string]interface{}{"id": float64(1), "monitored": false},
+			map[string]interface{}{"id": float64(2), "monitored": true},
+		},
+	}
+	ensureAtMostOneMonitoredReleasePerAlbum(album)
+	var idMon int
+	for _, item := range album["releases"].([]interface{}) {
+		r := item.(map[string]interface{})
+		if r["monitored"] == true {
+			idMon = intFromInterface(r["id"])
+		}
+	}
+	if idMon != 2 {
+		t.Fatalf("expected release 2 monitored, got id %d", idMon)
+	}
+}
+
+func TestEnsureAtMostOneMonitoredReleasePerAlbum_duplicatesSameIDAcrossKeys(t *testing.T) {
+	album := map[string]interface{}{
+		"releases": []interface{}{
+			map[string]interface{}{"id": float64(5), "title": "A"},
+		},
+		"albumReleases": []interface{}{
+			map[string]interface{}{"id": float64(5), "title": "A"},
+		},
+	}
+	ensureAtMostOneMonitoredReleasePerAlbum(album)
+	for _, key := range []string{"releases", "albumReleases"} {
+		for _, item := range album[key].([]interface{}) {
+			r := item.(map[string]interface{})
+			if r["monitored"] != true {
+				t.Fatalf("%s: expected id 5 monitored=true, got %#v", key, r)
+			}
+		}
 	}
 }

@@ -270,17 +270,39 @@ func (c *Client) putArtistJSON(ctx context.Context, artistID int, artist map[str
 	return nil
 }
 
-// applyMonitoringToExistingAlbumMap sets monitored on the album, nested artist, and all releases.
-// Used with GET /api/v1/album/{id} payloads so Lidarr lists missing tracks for that release group.
-func applyMonitoringToExistingAlbumMap(album map[string]interface{}) {
+var lidarrReleaseJSONKeys = []string{"releases", "Releases", "albumReleases", "AlbumReleases"}
+
+func jsonTruthy(v interface{}) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case float64:
+		return x != 0
+	case int:
+		return x != 0
+	case int64:
+		return x != 0
+	case json.Number:
+		i, err := x.Int64()
+		return err == nil && i != 0
+	case string:
+		s := strings.ToLower(strings.TrimSpace(x))
+		return s == "true" || s == "1"
+	default:
+		return false
+	}
+}
+
+// ensureAtMostOneMonitoredReleasePerAlbum leaves exactly one monitored=true release row per
+// distinct release id on the album payload. Lidarr only supports one monitored AlbumRelease per
+// album; multiple break the UI/API (Lidarr#3784, "Sequence contains more than one element").
+func ensureAtMostOneMonitoredReleasePerAlbum(album map[string]interface{}) {
 	if album == nil {
 		return
 	}
-	album["monitored"] = true
-	if art, ok := album["artist"].(map[string]interface{}); ok && art != nil {
-		art["monitored"] = true
-	}
-	for _, key := range []string{"releases", "Releases", "albumReleases", "AlbumReleases"} {
+	var orderedIDs []int
+	seenID := make(map[int]struct{})
+	for _, key := range lidarrReleaseJSONKeys {
 		list, ok := album[key].([]interface{})
 		if !ok {
 			continue
@@ -290,9 +312,106 @@ func applyMonitoringToExistingAlbumMap(album map[string]interface{}) {
 			if !ok {
 				continue
 			}
-			rel["monitored"] = true
+			id := intFromInterface(rel["id"])
+			if id > 0 {
+				if _, dup := seenID[id]; dup {
+					continue
+				}
+				seenID[id] = struct{}{}
+				orderedIDs = append(orderedIDs, id)
+			}
 		}
 	}
+	if len(orderedIDs) == 0 {
+		// No numeric ids (unusual): pick the first release in stable key order (key + slice index) as
+		// the sole monitored row. Go maps cannot be compared with ==, so we use position, not pointers.
+		var winKey string
+		winIdx := -1
+	outer:
+		for _, key := range lidarrReleaseJSONKeys {
+			list, ok := album[key].([]interface{})
+			if !ok {
+				continue
+			}
+			for i, item := range list {
+				if _, ok := item.(map[string]interface{}); ok {
+					winKey, winIdx = key, i
+					break outer
+				}
+			}
+		}
+		if winIdx < 0 || winKey == "" {
+			return
+		}
+		for _, key := range lidarrReleaseJSONKeys {
+			list, ok := album[key].([]interface{})
+			if !ok {
+				continue
+			}
+			for i, item := range list {
+				rel, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				rel["monitored"] = key == winKey && i == winIdx
+			}
+		}
+		return
+	}
+	winnerID := orderedIDs[0]
+	for _, id := range orderedIDs {
+		if r, ok := releaseMapByID(album, id); ok && jsonTruthy(r["monitored"]) {
+			winnerID = id
+			break
+		}
+	}
+	for _, key := range lidarrReleaseJSONKeys {
+		list, ok := album[key].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range list {
+			rel, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			id := intFromInterface(rel["id"])
+			rel["monitored"] = id > 0 && id == winnerID
+		}
+	}
+}
+
+func releaseMapByID(album map[string]interface{}, want int) (map[string]interface{}, bool) {
+	for _, key := range lidarrReleaseJSONKeys {
+		list, ok := album[key].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range list {
+			rel, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if intFromInterface(rel["id"]) == want {
+				return rel, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// applyMonitoringToExistingAlbumMap sets monitored on the album and nested artist, and ensures
+// exactly one monitored album release per Lidarr album (see ensureAtMostOneMonitoredReleasePerAlbum).
+// Used with GET /api/v1/album/{id} payloads so Lidarr lists missing tracks for that release group.
+func applyMonitoringToExistingAlbumMap(album map[string]interface{}) {
+	if album == nil {
+		return
+	}
+	album["monitored"] = true
+	if art, ok := album["artist"].(map[string]interface{}); ok && art != nil {
+		art["monitored"] = true
+	}
+	ensureAtMostOneMonitoredReleasePerAlbum(album)
 }
 
 func (c *Client) ensureArtistMonitored(ctx context.Context, artistID int) error {
@@ -304,8 +423,9 @@ func (c *Client) ensureArtistMonitored(ctx context.Context, artistID int) error 
 	return c.putArtistJSON(ctx, artistID, art)
 }
 
-// ensureExistingAlbumsMonitored forces album, album releases, and artist monitored in Lidarr when
-// the MusicBrainz release group is already in the library (e.g. Plexify added it earlier unmonitored).
+// ensureExistingAlbumsMonitored forces album and artist monitored in Lidarr when the MusicBrainz release
+// group is already in the library (e.g. Plexify added it earlier unmonitored). Exactly one album release
+// per album is left monitored on the PUT payload (Lidarr#3784).
 func (c *Client) ensureExistingAlbumsMonitored(ctx context.Context, libraryAlbums []map[string]interface{}) error {
 	var albumIDs []int
 	for _, a := range libraryAlbums {
@@ -519,9 +639,10 @@ func positiveIntFromJSON(v interface{}) bool {
 	return intFromInterface(v) > 0
 }
 
-// ensureMonitoredAddPayload forces the nested artist and album releases to monitored so Lidarr tracks
-// missing files (Wanted → Missing). Lidarr's AddArtistService sets artist.Monitored=false when
-// artist.addOptions.monitor is "none" (common on lookup payloads); we override to "all" for this add path.
+// ensureMonitoredAddPayload forces the nested artist to monitored and addOptions.monitor=all so Lidarr tracks
+// missing files (Wanted → Missing). At most one lookup release row is marked monitored per album id
+// (Lidarr#3784). Lidarr's AddArtistService sets artist.Monitored=false when artist.addOptions.monitor is
+// "none" (common on lookup payloads); we override to "all" for this add path.
 func ensureMonitoredAddPayload(album map[string]interface{}) {
 	if album == nil {
 		return
@@ -540,19 +661,7 @@ func ensureMonitoredAddPayload(album map[string]interface{}) {
 	}
 	ao["monitor"] = "all"
 
-	for _, key := range []string{"releases", "Releases", "albumReleases", "AlbumReleases"} {
-		list, ok := album[key].([]interface{})
-		if !ok {
-			continue
-		}
-		for _, item := range list {
-			rel, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			rel["monitored"] = true
-		}
-	}
+	ensureAtMostOneMonitoredReleasePerAlbum(album)
 }
 
 func (c *Client) postAlbum(ctx context.Context, album map[string]interface{}) error {
