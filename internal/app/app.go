@@ -395,7 +395,11 @@ func (app *Application) addMissingReleaseGroupsToLidarr(ctx context.Context, mis
 		res, err := app.lidarr.AddReleaseGroupIfMissing(ctx, id)
 		if err != nil {
 			slog.Error("lidarr: add release group", "release_group", id, "err", err)
-			fmt.Printf("❌ Lidarr: could not add release group %s: %v\n", id, err)
+			if we, ok := lidarr.AsWriteError(err); ok {
+				fmt.Printf("❌ %s\n", we.UserMessage())
+			} else {
+				fmt.Printf("❌ Lidarr: could not add release group %s: %v\n", id, err)
+			}
 			continue
 		}
 		if res.AlreadyPresent {
