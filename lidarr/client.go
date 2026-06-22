@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -78,12 +79,50 @@ type AddReleaseGroupResult struct {
 // AddReleaseGroupIfMissing looks up a MusicBrainz release group (Lidarr foreign album id), adds it
 // with search when not already in the Lidarr library, or when already present forces album, releases,
 // and artist monitored via the Lidarr API so missing tracks stay visible.
+// Transient write failures (e.g. Lidarr SQLite read-only) are retried with exponential backoff.
 func (c *Client) AddReleaseGroupIfMissing(ctx context.Context, releaseGroupMBID string) (AddReleaseGroupResult, error) {
 	rid := strings.TrimSpace(releaseGroupMBID)
 	out := AddReleaseGroupResult{ReleaseGroupID: rid}
 	if rid == "" {
 		return out, fmt.Errorf("empty release group id")
 	}
+
+	var lastErr error
+	for attempt := 0; attempt < writeMaxAttempts; attempt++ {
+		if attempt > 0 {
+			delay := writeBackoffFunc(attempt - 1)
+			reason := lidarrFailureReason(lastErr)
+			slog.WarnContext(ctx, "lidarr: transient write error; retrying",
+				"release_group", rid, "attempt", attempt+1, "max", writeMaxAttempts, "backoff", delay, "reason", reason, "err", lastErr)
+			fmt.Printf("⏳ Lidarr: temporarily unavailable (%s); retrying in %s (%d/%d)\n",
+				reason, delay.Round(time.Second), attempt+1, writeMaxAttempts)
+			select {
+			case <-ctx.Done():
+				return out, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		res, err := c.addReleaseGroupIfMissingOnce(ctx, rid)
+		if err == nil {
+			return res, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil {
+			return out, ctx.Err()
+		}
+		if !isTransientLidarrErr(err) {
+			return out, err
+		}
+		if attempt+1 >= writeMaxAttempts {
+			return out, &WriteError{ReleaseGroupID: rid, Reason: lidarrFailureReason(err)}
+		}
+	}
+	return out, &WriteError{ReleaseGroupID: rid, Reason: lidarrFailureReason(lastErr)}
+}
+
+func (c *Client) addReleaseGroupIfMissingOnce(ctx context.Context, rid string) (AddReleaseGroupResult, error) {
+	out := AddReleaseGroupResult{ReleaseGroupID: rid}
 
 	existing, err := c.fetchAlbumsByForeignAlbumID(ctx, rid)
 	if err != nil {
