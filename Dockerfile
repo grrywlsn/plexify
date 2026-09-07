@@ -1,5 +1,5 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.22 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine3.24 AS builder
 
 # Install git and ca-certificates (needed for HTTPS requests)
 RUN apk add --no-cache git ca-certificates tzdata
