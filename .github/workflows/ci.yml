@@ -514,5 +514,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ needs.get-version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max 
+          cache-from: type=registry,ref=ghcr.io/${{ github.actor }}/plexify:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.actor }}/plexify:buildcache,mode=max,ignore-error=true 
