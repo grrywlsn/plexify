@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.22 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine3.22 AS builder
 
 # Install git and ca-certificates (needed for HTTPS requests)
 RUN apk add --no-cache git ca-certificates tzdata
@@ -16,9 +16,12 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-s -w -X main.version=${VERSION:-dev}" \
+# Build the binary for the platform the image is being produced for
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w -X main.version=${VERSION}" \
     -o plexify \
     main.go
 
