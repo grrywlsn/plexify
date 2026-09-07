@@ -262,7 +262,7 @@ func (app *Application) displayMatchingResults(ctx context.Context, matchResults
 	for _, result := range matchResults {
 		if result.PlexTrack != nil {
 			switch result.MatchType {
-			case plex.MatchTypeTitleArtist:
+			case plex.MatchTypeTitleArtist, plex.MatchTypeTitleArtistAlias:
 				titleMatches++
 			}
 		} else {
@@ -282,6 +282,8 @@ func (app *Application) displayMatchingResults(ctx context.Context, matchResults
 				switch result.MatchType {
 				case plex.MatchTypeTitleArtist:
 					status = "🔍 Title/Artist match"
+				case plex.MatchTypeTitleArtistAlias:
+					status = "🔍 Title/Artist alias match"
 				}
 			}
 

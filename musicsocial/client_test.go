@@ -86,7 +86,11 @@ func TestClient_GetPlaylist_musicbrainzArtistCredits(t *testing.T) {
 					"musicbrainz": map[string]any{
 						"track_gid": "tg",
 						"artist_credits": []map[string]any{
-							{"artist_gid": "aec279b2-b9cc-488c-b892-f2271605fa11", "name": "Wynter Gordon"},
+							{
+								"artist_gid": "aec279b2-b9cc-488c-b892-f2271605fa11",
+								"name":       "Wynter Gordon",
+								"aliases":    []string{"Diana Gordon", " Wynter Gordon "},
+							},
 						},
 					},
 				},
@@ -110,6 +114,15 @@ func TestClient_GetPlaylist_musicbrainzArtistCredits(t *testing.T) {
 	tr := pl.Tracks[0]
 	if len(tr.MusicBrainzArtistCredits) != 1 || tr.MusicBrainzArtistCredits[0] != "Wynter Gordon" {
 		t.Fatalf("credits: %+v", tr.MusicBrainzArtistCredits)
+	}
+	wantAliases := []string{"Diana Gordon", "Wynter Gordon"}
+	if len(tr.MusicBrainzArtistAliases) != len(wantAliases) {
+		t.Fatalf("aliases: %+v", tr.MusicBrainzArtistAliases)
+	}
+	for i := range wantAliases {
+		if tr.MusicBrainzArtistAliases[i] != wantAliases[i] {
+			t.Fatalf("aliases: %+v", tr.MusicBrainzArtistAliases)
+		}
 	}
 }
 

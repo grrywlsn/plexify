@@ -3,9 +3,11 @@ package plex
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -190,6 +192,157 @@ func TestSearchTrack_punctuationNormalizedQueryFindsPlexHyphenTitle(t *testing.T
 	}
 	if kind != MatchTypeTitleArtist {
 		t.Errorf("expected MatchTypeTitleArtist, got %s", kind)
+	}
+}
+
+func TestSearchTrack_artistAliasFallback(t *testing.T) {
+	t.Parallel()
+
+	const sectionID = 2
+	var queries []string
+	var queryMu sync.Mutex
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		query := r.URL.Query().Get("query")
+		queryMu.Lock()
+		queries = append(queries, query)
+		queryMu.Unlock()
+		if strings.Contains(query, "Nancy Ajram") {
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Track ratingKey="nancy" title="Shhadi Ya Deni" grandparentTitle="Nancy Ajram" parentTitle="Shhadi Ya Deni"/>` +
+				`</MediaContainer>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="0"></MediaContainer>`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{Plex: config.PlexConfig{
+		URL:                    ts.URL,
+		Token:                  "tok",
+		LibrarySectionID:       sectionID,
+		MatchConfidencePercent: config.DefaultMatchConfidencePercent,
+	}}
+	c := NewClient(cfg)
+	c.SetSkipFullLibrarySearch(true)
+	song := track.Track{
+		Name:                     "Shhadi Ya Deni",
+		Artist:                   "نانسي عجرم",
+		Album:                    "Shhadi Ya Deni",
+		MusicBrainzArtistAliases: []string{"Nancy Ajram"},
+	}
+
+	got, kind, err := c.SearchTrack(context.Background(), song)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.ID != "nancy" {
+		t.Fatalf("expected Nancy Ajram alias match, got %+v", got)
+	}
+	if kind != MatchTypeTitleArtistAlias {
+		t.Fatalf("kind = %s, want %s", kind, MatchTypeTitleArtistAlias)
+	}
+	if confidence := c.calculateConfidence(song, got, kind); math.Abs(confidence-aliasConfidenceFactor) > scoreEqEps {
+		t.Fatalf("confidence = %f, want %f", confidence, aliasConfidenceFactor)
+	}
+
+	queryMu.Lock()
+	defer queryMu.Unlock()
+	var firstCanonical, firstAlias = -1, -1
+	for i, query := range queries {
+		if firstCanonical < 0 && strings.Contains(query, "نانسي عجرم") {
+			firstCanonical = i
+		}
+		if firstAlias < 0 && strings.Contains(query, "Nancy Ajram") {
+			firstAlias = i
+		}
+	}
+	if firstCanonical < 0 || firstAlias < 0 || firstCanonical >= firstAlias {
+		t.Fatalf("canonical artist must be searched before alias; queries: %q", queries)
+	}
+}
+
+func TestSearchTrack_artistAliasDiscountMustMeetThreshold(t *testing.T) {
+	t.Parallel()
+
+	const sectionID = 2
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		if strings.Contains(r.URL.Query().Get("query"), "Nancy Ajram") {
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Track ratingKey="nancy" title="Shhadi Ya Deni" grandparentTitle="Nancy Ajram" parentTitle="Shhadi Ya Deni"/>` +
+				`</MediaContainer>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="0"></MediaContainer>`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{Plex: config.PlexConfig{
+		URL:                    ts.URL,
+		Token:                  "tok",
+		LibrarySectionID:       sectionID,
+		MatchConfidencePercent: 96,
+	}}
+	c := NewClient(cfg)
+	c.SetSkipFullLibrarySearch(true)
+	got, kind, err := c.SearchTrack(context.Background(), track.Track{
+		Name:                     "Shhadi Ya Deni",
+		Artist:                   "نانسي عجرم",
+		Album:                    "Shhadi Ya Deni",
+		MusicBrainzArtistAliases: []string{"Nancy Ajram"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil || kind != MatchTypeNone {
+		t.Fatalf("95%% alias match must not pass 96%% threshold: got %+v (%s)", got, kind)
+	}
+}
+
+func TestSearchTrack_primaryArtistWinsBeforeAlias(t *testing.T) {
+	t.Parallel()
+
+	const sectionID = 2
+	var aliasQueried atomic.Bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		query := r.URL.Query().Get("query")
+		if strings.Contains(query, "نانسي عجرم") {
+			_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="1">` +
+				`<Track ratingKey="canonical" title="Shhadi Ya Deni" grandparentTitle="نانسي عجرم" parentTitle="Shhadi Ya Deni"/>` +
+				`</MediaContainer>`))
+			return
+		}
+		if strings.Contains(query, "Nancy Ajram") {
+			aliasQueried.Store(true)
+		}
+		_, _ = w.Write([]byte(`<?xml version="1.0"?><MediaContainer size="0"></MediaContainer>`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{Plex: config.PlexConfig{
+		URL:                    ts.URL,
+		Token:                  "tok",
+		LibrarySectionID:       sectionID,
+		MatchConfidencePercent: config.DefaultMatchConfidencePercent,
+	}}
+	c := NewClient(cfg)
+	c.SetSkipFullLibrarySearch(true)
+	got, kind, err := c.SearchTrack(context.Background(), track.Track{
+		Name:                     "Shhadi Ya Deni",
+		Artist:                   "نانسي عجرم",
+		Album:                    "Shhadi Ya Deni",
+		MusicBrainzArtistAliases: []string{"Nancy Ajram"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.ID != "canonical" || kind != MatchTypeTitleArtist {
+		t.Fatalf("expected canonical match, got %+v (%s)", got, kind)
+	}
+	if aliasQueried.Load() {
+		t.Fatal("alias should not be queried after a canonical match")
 	}
 }
 

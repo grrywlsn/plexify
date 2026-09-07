@@ -44,23 +44,36 @@ type trackSearchStrategy struct {
 //
 // When the source artist field lists multiple names separated by commas (typical on music-social.com),
 // the primary (first) name is used first for Plex queries, then the full string is retried if needed.
-// When MusicBrainz artist_credits are present on the track, each distinct credit name is tried after that,
-// which often matches Plex display metadata without fetching Plex Artist titleSort.
+// When MusicBrainz artist_credits are present on the track, each distinct credit name is tried after that.
+// MusicBrainz aliases are tried last and must pass the configured threshold after an alias confidence discount.
 func (c *Client) SearchTrack(ctx context.Context, song track.Track) (*PlexTrack, MatchKind, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, MatchTypeError, fmt.Errorf("search cancelled: %w", err)
 	}
 
-	candidates := song.PlexSearchArtistCandidates()
-	for i, searchArtist := range candidates {
+	candidates := song.PlexSearchArtistMatchCandidates()
+	for i, candidate := range candidates {
 		if i > 0 {
-			c.debugLog("🔍 SearchTrack: no match with primary artist; retrying with full artist field %q", searchArtist)
+			c.debugLog("🔍 SearchTrack: no match with stronger artist candidate; retrying with %q", candidate.Name)
 		}
-		found, err := c.searchTrackWithArtist(ctx, song, searchArtist)
+		found, err := c.searchTrackWithArtist(ctx, song, candidate.Name)
 		if err != nil {
 			return nil, MatchTypeError, err
 		}
 		if found != nil {
+			if candidate.Tier == track.ArtistMatchAlias {
+				confidence := c.aliasCandidateConfidence(song, found, candidate.Name)
+				if confidence < c.minMatchScore() {
+					c.debugLog(
+						"❌ SearchTrack: rejecting alias-assisted match via %q (discounted confidence %s < %s)",
+						candidate.Name,
+						formatConfidencePercent(confidence),
+						formatConfidencePercent(c.minMatchScore()),
+					)
+					continue
+				}
+				return found, MatchTypeTitleArtistAlias, nil
+			}
 			return found, MatchTypeTitleArtist, nil
 		}
 	}

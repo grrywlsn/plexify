@@ -34,9 +34,10 @@ const (
 	FullLibraryHTTPTimeout = 30 * time.Minute
 
 	// Match types (typed string constants)
-	MatchTypeTitleArtist MatchKind = "title_artist"
-	MatchTypeNone        MatchKind = "none"
-	MatchTypeError       MatchKind = "error"
+	MatchTypeTitleArtist      MatchKind = "title_artist"
+	MatchTypeTitleArtistAlias MatchKind = "title_artist_alias"
+	MatchTypeNone             MatchKind = "none"
+	MatchTypeError            MatchKind = "error"
 	// MatchKindISRC is reserved for tests / future ISRC-based confidence.
 	MatchKindISRC MatchKind = "isrc"
 

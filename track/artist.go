@@ -2,6 +2,22 @@ package track
 
 import "strings"
 
+// ArtistMatchTier describes the authority of an artist name used in a Plex
+// search. Aliases are deliberately the final, lower-confidence tier.
+type ArtistMatchTier uint8
+
+const (
+	ArtistMatchPrimary ArtistMatchTier = iota
+	ArtistMatchCredit
+	ArtistMatchAlias
+)
+
+// PlexSearchArtistCandidate is one ordered artist query and its confidence tier.
+type PlexSearchArtistCandidate struct {
+	Name string
+	Tier ArtistMatchTier
+}
+
 // PrimaryListedArtist returns the first listed artist when s contains multiple names.
 // Comma-separated lists (typical on music-social.com) use the first segment, e.g.
 // "Le Youth, Forester, Robertson" → "Le Youth".
@@ -43,11 +59,11 @@ func primaryBeforeAmpersand(s string) string {
 // typical single-artist Plex metadata; the full original string is tried second when it
 // differs (fallback for band names that legitimately contain commas or "&").
 // When MusicBrainzArtistCredits is set (music-social musicbrainz.artist_credits), each distinct
-// credit name is appended next—authoritative aliases that often align with Plex without extra API calls.
-func (t Track) PlexSearchArtistCandidates() []string {
+// credit name is appended next. MusicBrainz aliases are appended last.
+func (t Track) PlexSearchArtistMatchCandidates() []PlexSearchArtistCandidate {
 	seen := make(map[string]struct{})
-	var out []string
-	appendUnique := func(s string) {
+	var out []PlexSearchArtistCandidate
+	appendUnique := func(s string, tier ArtistMatchTier) {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			return
@@ -57,22 +73,36 @@ func (t Track) PlexSearchArtistCandidates() []string {
 			return
 		}
 		seen[k] = struct{}{}
-		out = append(out, s)
+		out = append(out, PlexSearchArtistCandidate{Name: s, Tier: tier})
 	}
 
 	full := strings.TrimSpace(t.Artist)
 	if full != "" {
 		primary := PrimaryListedArtist(t.Artist)
-		appendUnique(primary)
+		appendUnique(primary, ArtistMatchPrimary)
 		if primary != full {
-			appendUnique(full)
+			appendUnique(full, ArtistMatchPrimary)
 		}
 	}
 	for _, name := range t.MusicBrainzArtistCredits {
-		appendUnique(name)
+		appendUnique(name, ArtistMatchCredit)
+	}
+	for _, name := range t.MusicBrainzArtistAliases {
+		appendUnique(name, ArtistMatchAlias)
 	}
 	if len(out) == 0 {
-		return []string{""}
+		return []PlexSearchArtistCandidate{{Name: "", Tier: ArtistMatchPrimary}}
+	}
+	return out
+}
+
+// PlexSearchArtistCandidates returns the ordered artist query strings. It is
+// retained for callers that do not need tier metadata.
+func (t Track) PlexSearchArtistCandidates() []string {
+	candidates := t.PlexSearchArtistMatchCandidates()
+	out := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		out[i] = candidate.Name
 	}
 	return out
 }

@@ -95,8 +95,9 @@ type appleMusicDTO struct {
 }
 
 type mbArtistCreditDTO struct {
-	ArtistGID string `json:"artist_gid"`
-	Name      string `json:"name"`
+	ArtistGID string   `json:"artist_gid"`
+	Name      string   `json:"name"`
+	Aliases   []string `json:"aliases,omitempty"`
 }
 
 type mbTrackDTO struct {
@@ -175,6 +176,11 @@ func (c *Client) GetPlaylist(playlistID string) (*Playlist, error) {
 			for _, ac := range tj.MB.ArtistCredits {
 				if n := strings.TrimSpace(ac.Name); n != "" {
 					tr.MusicBrainzArtistCredits = append(tr.MusicBrainzArtistCredits, n)
+				}
+				for _, alias := range ac.Aliases {
+					if n := strings.TrimSpace(alias); n != "" {
+						tr.MusicBrainzArtistAliases = append(tr.MusicBrainzArtistAliases, n)
+					}
 				}
 			}
 		}
