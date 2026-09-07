@@ -14,6 +14,9 @@ type Track struct {
 	// PlexSearchArtistCandidates tries each distinct name after the main Artist field so catalog aliases
 	// match Plex without an extra Plex Artist metadata fetch when possible.
 	MusicBrainzArtistCredits []string
+	// MusicBrainzArtistAliases are alternate artist names from each MusicBrainz
+	// artist credit. Plexify only tries them after the source and credit names.
+	MusicBrainzArtistAliases []string
 
 	// Streaming album identifiers from music-social.com JSON (optional).
 	SpotifyAlbumURI   string // e.g. spotify:album:{id} or https://open.spotify.com/album/...

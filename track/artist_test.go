@@ -56,4 +56,22 @@ func TestTrack_PlexSearchArtistCandidates(t *testing.T) {
 	if got := (Track{MusicBrainzArtistCredits: []string{"Diana Gordon"}}).PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantCreditsOnly) {
 		t.Errorf("credits only: got %v want %v", got, wantCreditsOnly)
 	}
+
+	withAliases := Track{
+		Artist:                   "نانسي عجرم",
+		MusicBrainzArtistCredits: []string{"نانسي عجرم"},
+		MusicBrainzArtistAliases: []string{"Nancy Ajram", "nancy ajram", "Nancy Agram"},
+	}
+	wantAliasNames := []string{"نانسي عجرم", "Nancy Ajram", "Nancy Agram"}
+	if got := withAliases.PlexSearchArtistCandidates(); !reflect.DeepEqual(got, wantAliasNames) {
+		t.Errorf("aliases last and deduplicated: got %v want %v", got, wantAliasNames)
+	}
+	wantTiered := []PlexSearchArtistCandidate{
+		{Name: "نانسي عجرم", Tier: ArtistMatchPrimary},
+		{Name: "Nancy Ajram", Tier: ArtistMatchAlias},
+		{Name: "Nancy Agram", Tier: ArtistMatchAlias},
+	}
+	if got := withAliases.PlexSearchArtistMatchCandidates(); !reflect.DeepEqual(got, wantTiered) {
+		t.Errorf("tiered aliases: got %+v want %+v", got, wantTiered)
+	}
 }

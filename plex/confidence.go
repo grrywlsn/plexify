@@ -8,6 +8,8 @@ import (
 	"github.com/grrywlsn/plexify/track"
 )
 
+const aliasConfidenceFactor = 0.95
+
 // formatConfidencePercent renders a 0–1 score as a whole percent for user-facing output (e.g. 0.8 → "80%", 1.0 → "100%").
 func formatConfidencePercent(x float64) string {
 	if math.IsNaN(x) || math.IsInf(x, 0) {
@@ -111,9 +113,29 @@ func (c *Client) calculateConfidence(song track.Track, plexTrack *PlexTrack, mat
 			return (titleSimilarity * 0.55) + (artistSimilarity * 0.25) + (albumSim * 0.20)
 		}
 		return (titleSimilarity * 0.7) + (artistSimilarity * 0.3)
+	case MatchTypeTitleArtistAlias:
+		var best float64
+		for _, alias := range song.MusicBrainzArtistAliases {
+			if confidence := c.aliasCandidateConfidence(song, plexTrack, alias); confidence > best {
+				best = confidence
+			}
+		}
+		return best
 	default:
 		return 0.0
 	}
+}
+
+// aliasCandidateConfidence scores a match as if alias were the source artist,
+// then applies a fixed discount so an alias can never equal a canonical match.
+func (c *Client) aliasCandidateConfidence(song track.Track, plexTrack *PlexTrack, alias string) float64 {
+	alias = strings.TrimSpace(alias)
+	if alias == "" || plexTrack == nil {
+		return 0
+	}
+	aliasSong := song
+	aliasSong.Artist = alias
+	return aliasConfidenceFactor * c.calculateConfidence(aliasSong, plexTrack, MatchTypeTitleArtist)
 }
 
 // calculateStringSimilarity calculates similarity between two strings
