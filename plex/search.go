@@ -45,44 +45,104 @@ type trackSearchStrategy struct {
 // When the source artist field lists multiple names separated by commas (typical on music-social.com),
 // the primary (first) name is used first for Plex queries, then the full string is retried if needed.
 // When MusicBrainz artist_credits are present on the track, each distinct credit name is tried after that.
-// MusicBrainz aliases are tried last and must pass the configured threshold after an alias confidence discount.
+//
+// Candidates are grouped by evidence tier rather than by search method. Source and credit names are
+// exhausted first (indexed /search, then one full-library scan shared by all of them); MusicBrainz
+// aliases are only consulted when none of those cleared the confidence threshold. Aliases use indexed
+// /search only: scanning the whole library under a loosely related alias matches unrelated artists.
 func (c *Client) SearchTrack(ctx context.Context, song track.Track) (*PlexTrack, MatchKind, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, MatchTypeError, fmt.Errorf("search cancelled: %w", err)
 	}
 
-	candidates := song.PlexSearchArtistMatchCandidates()
-	for i, candidate := range candidates {
+	var canonical, aliases []track.PlexSearchArtistCandidate
+	for _, candidate := range song.PlexSearchArtistMatchCandidates() {
+		if candidate.Tier == track.ArtistMatchAlias {
+			aliases = append(aliases, candidate)
+			continue
+		}
+		canonical = append(canonical, candidate)
+	}
+
+	for i, candidate := range canonical {
 		if i > 0 {
 			c.debugLog("🔍 SearchTrack: no match with stronger artist candidate; retrying with %q", candidate.Name)
 		}
-		found, err := c.searchTrackWithArtist(ctx, song, candidate.Name)
+		found, err := c.searchTrackIndexed(ctx, song, candidate.Name)
 		if err != nil {
 			return nil, MatchTypeError, err
 		}
 		if found != nil {
-			if candidate.Tier == track.ArtistMatchAlias {
-				confidence := c.aliasCandidateConfidence(song, found, candidate.Name)
-				if confidence < c.minMatchScore() {
-					c.debugLog(
-						"❌ SearchTrack: rejecting alias-assisted match via %q (discounted confidence %s < %s)",
-						candidate.Name,
-						formatConfidencePercent(confidence),
-						formatConfidencePercent(c.minMatchScore()),
-					)
-					continue
-				}
-				return found, MatchTypeTitleArtistAlias, nil
-			}
 			return found, MatchTypeTitleArtist, nil
 		}
+	}
+
+	if !c.skipFullLibrarySearch && !c.exactMatchesOnly {
+		library, err := c.libraryForFullScan(ctx, song)
+		if err != nil {
+			return nil, MatchTypeError, err
+		}
+		for _, candidate := range canonical {
+			if err := ctx.Err(); err != nil {
+				return nil, MatchTypeError, fmt.Errorf("search cancelled: %w", err)
+			}
+			c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", song.Name, candidate.Name)
+			if tr := c.matchInLibrary(ctx, library, song.Name, candidate.Name, song.Album); tr != nil {
+				slog.Debug(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.DisplayArtist()))
+				return tr, MatchTypeTitleArtist, nil
+			}
+		}
+	}
+
+	for _, candidate := range aliases {
+		c.debugLog("🔍 SearchTrack: no match on source or credit names; trying alias %q", candidate.Name)
+		found, err := c.searchTrackIndexed(ctx, song, candidate.Name)
+		if err != nil {
+			return nil, MatchTypeError, err
+		}
+		if found == nil {
+			continue
+		}
+		confidence := c.aliasCandidateConfidence(song, found, candidate.Name)
+		if confidence < c.minMatchScore() {
+			c.debugLog(
+				"❌ SearchTrack: rejecting alias-assisted match via %q (discounted confidence %s < %s)",
+				candidate.Name,
+				formatConfidencePercent(confidence),
+				formatConfidencePercent(c.minMatchScore()),
+			)
+			continue
+		}
+		return found, MatchTypeTitleArtistAlias, nil
 	}
 
 	return nil, MatchTypeNone, nil
 }
 
-// searchTrackWithArtist runs the search pipeline for a single artist string (title still from song).
-func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, artist string) (*PlexTrack, error) {
+// libraryForFullScan fetches the full library once per track search. A transient failure degrades to
+// an empty library (no match for this track) rather than failing the whole match, matching the
+// previous per-candidate behaviour.
+func (c *Client) libraryForFullScan(ctx context.Context, song track.Track) ([]PlexTrack, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("search cancelled: %w", err)
+	}
+	library, err := c.fetchEntireLibrary(ctx)
+	if err == nil {
+		return library, nil
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("search cancelled: %w", ctx.Err())
+	}
+	if !isTransientPlexErr(err) {
+		return nil, err
+	}
+	slog.WarnContext(ctx, "full library Plex scan failed; treating as no match for this track",
+		"err", err, "title", song.Name, "artist", song.Artist)
+	return nil, nil
+}
+
+// searchTrackIndexed runs the indexed /search pipeline for a single artist string (title still from song).
+func (c *Client) searchTrackIndexed(ctx context.Context, song track.Track, artist string) (*PlexTrack, error) {
 	c.debugLog("🔍 SearchTrack: searching for '%s' by '%s' (source artist field: %q)", song.Name, artist, song.Artist)
 
 	indexedStrategies := c.indexedTrackSearchStrategies()
@@ -113,30 +173,6 @@ func (c *Client) searchTrackWithArtist(ctx context.Context, song track.Track, ar
 				slog.Debug(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using %s [%s tier]", tr.Title, tr.DisplayArtist(), strategy.name, phase.tierLabel()))
 				return tr, nil
 			}
-		}
-	}
-
-	if !c.skipFullLibrarySearch && !c.exactMatchesOnly {
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("search cancelled: %w", err)
-		}
-		c.debugLog("🔍 SearchTrack: trying full library search for '%s' by '%s'", song.Name, artist)
-		tr, err := c.searchEntireLibrary(ctx, song.Name, artist, song.Album)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, fmt.Errorf("search cancelled: %w", ctx.Err())
-			}
-			if isTransientPlexErr(err) {
-				slog.WarnContext(ctx, "full library Plex scan failed; treating as no match for this track",
-					"err", err, "title", song.Name, "artist", artist)
-				tr, err = nil, nil
-			} else {
-				return nil, err
-			}
-		}
-		if tr != nil {
-			slog.Debug(fmt.Sprintf("✅ SearchTrack: found match '%s' by '%s' using full library search", tr.Title, tr.DisplayArtist()))
-			return tr, nil
 		}
 	}
 
@@ -435,9 +471,34 @@ func (c *Client) searchByTitleWithSingleQuoteVariations(ctx context.Context, tit
 	return c.searchByTitleWithSingleQuoteVariationsPhase(ctx, title, artist, sourceAlbum, searchPhaseTitleArtist)
 }
 
-// searchEntireLibrary is a fallback method that searches through all tracks in the library
-// This is used when the regular search methods fail to find tracks that should exist
+// searchEntireLibrary fetches the whole library and matches one title/artist against it.
+// SearchTrack does not use this: it fetches once via fetchEntireLibrary and reuses the result
+// across artist candidates rather than re-downloading the library for each one.
 func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceAlbum string) (*PlexTrack, error) {
+	tracks, err := c.fetchEntireLibrary(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return c.matchInLibrary(ctx, tracks, title, artist, sourceAlbum), nil
+}
+
+// matchInLibrary scores one title/artist against an already-fetched library snapshot.
+// The snapshot is shared across artist candidates, so artist-sort enrichment applied for an
+// earlier candidate is still present for later ones.
+func (c *Client) matchInLibrary(ctx context.Context, tracks []PlexTrack, title, artist, sourceAlbum string) *PlexTrack {
+	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(tracks))
+	result := c.findBestMatchWithOptionalArtistSortRetry(ctx, tracks, title, artist, sourceAlbum, true)
+	if result != nil {
+		slog.Debug(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.DisplayArtist(), title, artist))
+	} else {
+		slog.Debug(fmt.Sprintf("❌ searchEntireLibrary: no match found for search '%s' by '%s'", title, artist))
+	}
+	return result
+}
+
+// fetchEntireLibrary downloads every track in the music section. This is the expensive fallback
+// used when indexed /search cannot find a track that should exist.
+func (c *Client) fetchEntireLibrary(ctx context.Context) ([]PlexTrack, error) {
 	// Get all tracks from the library
 	reqURL := fmt.Sprintf("%s/library/sections/%d/all", c.baseURL, c.sectionID)
 	params := url.Values{}
@@ -472,15 +533,7 @@ func (c *Client) searchEntireLibrary(ctx context.Context, title, artist, sourceA
 	}
 	_ = resp.Body.Close()
 
-	// Find best match among all tracks
-	c.debugLog("🔍 searchEntireLibrary: searching for '%s' by '%s' in entire library (%d tracks)", title, artist, len(libraryResp.Tracks))
-	result := c.findBestMatchWithOptionalArtistSortRetry(ctx, libraryResp.Tracks, title, artist, sourceAlbum, true)
-	if result != nil {
-		slog.Debug(fmt.Sprintf("✅ searchEntireLibrary: found match '%s' by '%s' for search '%s' by '%s'", result.Title, result.DisplayArtist(), title, artist))
-	} else {
-		slog.Debug(fmt.Sprintf("❌ searchEntireLibrary: no match found for search '%s' by '%s'", title, artist))
-	}
-	return result, nil
+	return libraryResp.Tracks, nil
 }
 
 const scoreEqEps = 1e-9

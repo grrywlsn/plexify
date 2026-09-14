@@ -79,8 +79,11 @@ type Client struct {
 // GrandparentRatingKey identifies the library Artist item; GrandparentTitleSort is Plex Artist titleSort (Sort Artist),
 // filled after optional metadata fetch when Pass 1 matching fails to reach min confidence.
 type PlexTrack struct {
-	ID                   string `xml:"ratingKey,attr"`
-	Title                string `xml:"title,attr"`
+	ID    string `xml:"ratingKey,attr"`
+	Title string `xml:"title,attr"`
+	// TitleSort is the track's own sort title. Plex sometimes stores the real title here and
+	// leaves title empty; UnmarshalXML falls back to it so matching does not see a blank title.
+	TitleSort            string `xml:"titleSort,attr"`
 	Artist               string `xml:"grandparentTitle,attr"`
 	OriginalTitle        string `xml:"originalTitle,attr"`
 	GrandparentRatingKey string `xml:"grandparentRatingKey,attr"`
@@ -90,6 +93,22 @@ type PlexTrack struct {
 	AddedAt              string `xml:"addedAt,attr"`
 	UpdatedAt            string `xml:"updatedAt,attr"`
 	File                 string `xml:"file,attr"`
+}
+
+// UnmarshalXML decodes a Track element and substitutes titleSort when title is empty.
+// Every Plex response that carries tracks (indexed search, full-library scan, playlist
+// items) decodes through here, so the fallback applies uniformly.
+func (t *PlexTrack) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plexTrackAttrs PlexTrack // sheds this method, so DecodeElement will not recurse
+	var raw plexTrackAttrs
+	if err := d.DecodeElement(&raw, &start); err != nil {
+		return err
+	}
+	*t = PlexTrack(raw)
+	if strings.TrimSpace(t.Title) == "" {
+		t.Title = strings.TrimSpace(t.TitleSort)
+	}
+	return nil
 }
 
 // DisplayArtist returns a label for user-facing output: the track artist when set, else the album artist.
